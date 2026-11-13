@@ -32,7 +32,7 @@ export async function cacheGet<T>(key: string): Promise<{ data: T; stale: boolea
 export async function cacheClear(): Promise<void> {
   const keys = await AsyncStorage.getAllKeys();
   const ours = keys.filter((k) => k.startsWith(PREFIX));
-  if (ours.length > 0) await AsyncStorage.multiRemove(ours);
+  await Promise.all(ours.map(key => AsyncStorage.removeItem(key)));
 }
 
 // Pending mutations queue — mutations made while offline are stored here

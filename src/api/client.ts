@@ -31,6 +31,48 @@ export class NetworkError extends Error {
   }
 }
 
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+/** Versioned ARP commands are never replayed offline without explicit review. */
+export async function apiOnline<T>(
+  path: string,
+  body?: unknown,
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+): Promise<T> {
+  const auth = await authHeader();
+  const resolvedMethod = method ?? (body === undefined ? "GET" : "POST");
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: resolvedMethod,
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data: any = {};
+  if (typeof response.text === "function") {
+    const text = await response.text();
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: text };
+    }
+  } else {
+    data = await response.json();
+  }
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      (data.error || `Erreur ${response.status}`) +
+        (Array.isArray(data.missing) ? ` : ${data.missing.join(", ")}` : "")
+    );
+  }
+  return data as T;
+}
+
 export interface ApiOptions {
   cacheKey?: string;
   cacheTtlMs?: number;
@@ -48,11 +90,12 @@ export async function apiGet<T>(
       credentials: "include",
       headers: { "Content-Type": "application/json", ...auth },
     });
-    if (!res.ok) throw new Error(`API error ${res.status}`);
+    if (!res.ok) throw new ApiError(res.status, `API error ${res.status}`);
     const data = (await res.json()) as T;
     cacheSet(cacheKey, data, opts.cacheTtlMs).catch(() => {});
     return data as T & { __cached?: boolean };
   } catch (err) {
+    if (err instanceof ApiError) throw err;
     if (opts.offlineFallback !== false) {
       const cached = await cacheGet<T>(cacheKey);
       if (cached) {
@@ -81,10 +124,18 @@ export async function apiMutate<T>(
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(text || `API error ${res.status}`);
+      let message = text || `API error ${res.status}`;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error) message = parsed.error;
+      } catch {
+        // Keep raw text
+      }
+      throw new ApiError(res.status, message);
     }
     return (await res.json()) as T;
   } catch (err) {
+    if (err instanceof ApiError) throw err;
     await enqueueMutation({ method, path, body });
     throw new NetworkError((err as Error).message);
   }

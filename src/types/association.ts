@@ -77,6 +77,8 @@ export interface CycleActivityInfo {
   cycleSessions?: number | null;
   cycleStart?: string | null;
   cycleEnd?: string | null;
+  conditionMonths?: number | null;
+  collectionAmount?: number | null;
 }
 
 export interface CycleResponse {

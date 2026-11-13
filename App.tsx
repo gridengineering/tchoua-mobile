@@ -36,6 +36,8 @@ import { HistoriqueScreen } from "./src/screens/modules/HistoriqueScreen";
 import { InteretsScreen } from "./src/screens/modules/InteretsScreen";
 import { CycleTontineScreen } from "./src/screens/modules/CycleTontineScreen";
 
+import { ArpScreen } from "./src/screens/modules/ArpScreen";
+
 const Stack = createStackNavigator();
 
 function LoginScreen() {
@@ -234,6 +236,7 @@ function AppShell() {
           ) : (
             <>
               <Stack.Screen name="Main" component={MainTabNavigator} />
+              <Stack.Screen name="arp" component={ArpScreen} />
               <Stack.Screen name="epargne" component={EpargneScreen} />
               <Stack.Screen name="prets" component={PretsScreen} />
               <Stack.Screen name="solidarite" component={SolidariteScreen} />

@@ -19,6 +19,7 @@ interface PlusMenuProps {
 }
 
 const SECONDARY_MODULES = [
+  { id: "arp", label: "Cadre ARP & Fonds", icon: "🏛️" },
   { id: "historique", label: "Historique Financier", icon: "📜" },
   { id: "interets", label: "Intérêts & Dividendes", icon: "✨" },
   { id: "wallet", label: "Portefeuille (Wallet)", icon: "👛" },

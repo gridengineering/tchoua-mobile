@@ -1,35 +1,102 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  RefreshControl,
   Dimensions,
 } from "react-native";
-import { setSelectedAssociation } from "../api/client";
+import { apiGet, setSelectedAssociation } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { COLORS, SPACING, SHADOW } from "../theme";
-import { ASSOC_TYPE_META, AssociationSummary, getMemberCount } from "../types/association";
+import {
+  ASSOC_TYPE_META,
+  AssociationSummary,
+  AssocType,
+  getMemberCount,
+  HistoryEvent,
+  HistoryResponse,
+} from "../types/association";
 
 const { width } = Dimensions.get("window");
 
-const DEMO_ASSOCIATIONS: AssociationSummary[] = [
-  { id: "amsed", name: "AMSED", type: "SECTION", _count: { memberships: 42 } },
-  { id: "ameibans", name: "AMEIBANS", type: "AMICALE", _count: { memberships: 120 } },
-  { id: "ndi-mbe", name: "Fonds NDI MBE", type: "FEDERATION", _count: { memberships: 18 } },
-  { id: "a30", name: "Association A30", type: "TONTINE_CLUB", _count: { memberships: 30 } },
-];
+interface LiveAssociation extends AssociationSummary {
+  nextMeeting?: { id: string; title: string; scheduledAt: string; type?: string } | null;
+}
 
 export const HomeScreen = ({ navigation }: any) => {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const [selectedAssoc, setSelectedAssoc] = useState<string>("all");
+  const [associations, setAssociations] = useState<LiveAssociation[]>([]);
+  const [tontineCount, setTontineCount] = useState<number>(0);
+  const [loansCount, setLoansCount] = useState<number>(0);
+  const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [recentEvents, setRecentEvents] = useState<HistoryEvent[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadData = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [assocRes, tontinesRes, loansRes, walletRes] = await Promise.allSettled([
+        apiGet<{ associations: LiveAssociation[] }>("/associations"),
+        apiGet<{ items: any[] }>("/me/aggregate?resource=activities&type=TONTINE"),
+        apiGet<{ items: any[] }>("/me/aggregate?resource=loans"),
+        apiGet<{ balance?: number; wallet?: { balance?: number } }>("/wallet"),
+      ]);
+
+      let loadedAssocs: LiveAssociation[] = [];
+      if (assocRes.status === "fulfilled" && Array.isArray(assocRes.value?.associations)) {
+        loadedAssocs = assocRes.value.associations;
+        setAssociations(loadedAssocs);
+      }
+      if (tontinesRes.status === "fulfilled" && Array.isArray(tontinesRes.value?.items)) {
+        setTontineCount(tontinesRes.value.items.length);
+      }
+      if (loansRes.status === "fulfilled" && Array.isArray(loansRes.value?.items)) {
+        setLoansCount(loansRes.value.items.length);
+      }
+      if (walletRes.status === "fulfilled") {
+        const bal = walletRes.value?.wallet?.balance ?? walletRes.value?.balance ?? 0;
+        setWalletBalance(Number(bal) || 0);
+      }
+
+      const targetAssocId =
+        selectedAssoc !== "all" ? selectedAssoc : loadedAssocs[0]?.id;
+      if (targetAssocId) {
+        try {
+          const hist = await apiGet<HistoryResponse>(
+            `/associations/${targetAssocId}/history?pageSize=5`
+          );
+          if (Array.isArray(hist?.events)) {
+            setRecentEvents(hist.events.slice(0, 5));
+          }
+        } catch {
+          // ignore if history unavailable
+        }
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }, [selectedAssoc]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const KPIS = [
-    { label: "Mes Tontines", value: "3", icon: "💰", color: colors.primary },
-    { label: "Épargne Totale", value: "145k F", icon: "🏦", color: colors.secondary },
-    { label: "Prêts Actifs", value: "1", icon: "🤝", color: colors.terracotta },
-    { label: "Score Réput.", value: "850", icon: "🏆", color: colors.info },
+    { label: "Mes Tontines", value: String(tontineCount), icon: "💰", color: colors.primary },
+    {
+      label: "Portefeuille",
+      value: walletBalance >= 1000 ? `${Math.round(walletBalance / 1000)}k F` : `${walletBalance} F`,
+      icon: "🏦",
+      color: colors.secondary,
+    },
+    { label: "Prêts Actifs", value: String(loansCount), icon: "🤝", color: colors.terracotta },
+    { label: "Score Réput.", value: String(user.score ?? 0), icon: "🏆", color: colors.info },
   ];
 
   const handleSelectAssoc = (id: string) => {
@@ -37,23 +104,30 @@ export const HomeScreen = ({ navigation }: any) => {
     setSelectedAssociation(id === "all" ? null : id).catch(() => {});
   };
 
-  const activeAssoc = DEMO_ASSOCIATIONS.find((a) => a.id === selectedAssoc);
+  const activeAssoc = associations.find((a) => a.id === selectedAssoc) ?? associations[0];
+  const nextMeeting = activeAssoc?.nextMeeting;
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} />}
+    >
       {/* Header with Association Selector */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={styles.topRow}>
           <View>
-            <Text style={styles.welcome}>Bonjour, Marie 👋</Text>
+            <Text style={styles.welcome}>Bonjour, {user.name.split(" ")[0]} 👋</Text>
             <Text style={styles.status}>
-              {activeAssoc
-                ? `${ASSOC_TYPE_META[activeAssoc.type].icon} ${ASSOC_TYPE_META[activeAssoc.type].label} · ${getMemberCount(activeAssoc)} membres`
-                : "Membre Premium · Yaoundé"}
+              {selectedAssoc !== "all" && activeAssoc
+                ? `${(ASSOC_TYPE_META[activeAssoc.type as AssocType] ?? ASSOC_TYPE_META.OTHER).icon} ${(ASSOC_TYPE_META[activeAssoc.type as AssocType] ?? ASSOC_TYPE_META.OTHER).label} · ${getMemberCount(activeAssoc)} membres`
+                : `${associations.length} association(s) · www.tchoua.com`}
             </Text>
           </View>
           <TouchableOpacity style={styles.avatar}>
-            <Text style={[styles.avatarText, { color: colors.primary }]}>M</Text>
+            <Text style={[styles.avatarText, { color: colors.primary }]}>
+              {user.name.charAt(0).toUpperCase()}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -71,9 +145,9 @@ export const HomeScreen = ({ navigation }: any) => {
               Toutes
             </Text>
           </TouchableOpacity>
-          {DEMO_ASSOCIATIONS.map((a) => {
+          {associations.map((a) => {
             const active = selectedAssoc === a.id;
-            const meta = ASSOC_TYPE_META[a.type];
+            const meta = ASSOC_TYPE_META[a.type as AssocType] ?? ASSOC_TYPE_META.OTHER;
             return (
               <TouchableOpacity
                 key={a.id}
@@ -114,18 +188,32 @@ export const HomeScreen = ({ navigation }: any) => {
           style={[styles.sessionCard, { backgroundColor: colors.surface }]}
           onPress={() => navigation?.navigate?.("sessions")}
         >
-          <View style={[styles.sessionDate, { backgroundColor: colors.primary + "12" }]}>
-            <Text style={[styles.dateDay, { color: colors.primary }]}>15</Text>
-            <Text style={[styles.dateMonth, { color: colors.primary }]}>MAI</Text>
-          </View>
-          <View style={styles.sessionInfo}>
-            <Text style={[styles.sessionTitleText, { color: colors.text }]}>AG Mensuelle - AMSED</Text>
-            <Text style={[styles.sessionLocation, { color: colors.gray }]}>📍 Foyer Bandjoun, Yaoundé</Text>
-            <Text style={[styles.sessionTime, { color: colors.primary }]}>🕒 15:00 — 19:00</Text>
-          </View>
-          <View style={[styles.countdown, { backgroundColor: colors.secondary }]}>
-            <Text style={styles.countdownValue}>J-7</Text>
-          </View>
+          {nextMeeting ? (
+            <>
+              <View style={[styles.sessionDate, { backgroundColor: colors.primary + "12" }]}>
+                <Text style={[styles.dateDay, { color: colors.primary }]}>
+                  {new Date(nextMeeting.scheduledAt).getDate()}
+                </Text>
+                <Text style={[styles.dateMonth, { color: colors.primary }]}>
+                  {new Date(nextMeeting.scheduledAt).toLocaleDateString("fr-FR", { month: "short" }).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.sessionInfo}>
+                <Text style={[styles.sessionTitleText, { color: colors.text }]}>{nextMeeting.title}</Text>
+                <Text style={[styles.sessionLocation, { color: colors.gray }]}>{activeAssoc?.name}</Text>
+                <Text style={[styles.sessionTime, { color: colors.primary }]}>
+                  🕒 {new Date(nextMeeting.scheduledAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                </Text>
+              </View>
+            </>
+          ) : (
+            <View style={styles.sessionInfo}>
+              <Text style={[styles.sessionTitleText, { color: colors.text }]}>Aucune réunion planifiée</Text>
+              <Text style={[styles.sessionLocation, { color: colors.gray }]}>
+                Tirez vers le bas pour actualiser depuis www.tchoua.com
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -142,29 +230,35 @@ export const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
         </View>
-        {[
-          { t: "Cotisation Tontine A", a: "+25 000 F", d: "Hier, 18:30", i: "💸" },
-          { t: "Remboursement principal", a: "+50 000 F", d: "10 mai 2026", i: "🏦" },
-          { t: "Part d'intérêts — prêt", a: "+2 250 F", d: "10 mai 2026", i: "✨" },
-          { t: "Aide Solidarité (Naiss.)", a: "+50 000 F", d: "28 avr. 2026", i: "👶" },
-        ].map((item, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[styles.activityItem, { backgroundColor: colors.surface }]}
-            onPress={() => navigation?.navigate?.("historique")}
-          >
-            <View style={[styles.activityIcon, { backgroundColor: colors.background }]}>
-              <Text style={{ fontSize: 18 }}>{item.i}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.activityTitle, { color: colors.text }]}>{item.t}</Text>
-              <Text style={[styles.activityDate, { color: colors.gray }]}>{item.d}</Text>
-            </View>
-            <Text style={[styles.activityAmount, { color: item.a.includes("+") ? colors.success : colors.danger }]}>
-              {item.a}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {recentEvents.length === 0 ? (
+          <Text style={{ color: colors.gray, fontSize: 13 }}>
+            Aucun mouvement récent pour le moment.
+          </Text>
+        ) : (
+          recentEvents.map((ev) => (
+            <TouchableOpacity
+              key={ev.id}
+              style={[styles.activityItem, { backgroundColor: colors.surface }]}
+              onPress={() => navigation?.navigate?.("historique")}
+            >
+              <View style={[styles.activityIcon, { backgroundColor: colors.background }]}>
+                <Text style={{ fontSize: 18 }}>
+                  {ev.type === "INTEREST" ? "✨" : ev.type === "REPAYMENT" ? "🏦" : ev.type === "LOAN" ? "💳" : "💸"}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.activityTitle, { color: colors.text }]}>{ev.label}</Text>
+                <Text style={[styles.activityDate, { color: colors.gray }]}>
+                  {new Date(ev.date).toLocaleDateString("fr-FR")}
+                </Text>
+              </View>
+              <Text style={[styles.activityAmount, { color: ev.direction === "IN" ? colors.success : colors.danger }]}>
+                {ev.direction === "IN" ? "+" : "-"}
+                {Math.round(ev.amount).toLocaleString("fr-FR")} F
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
       </View>
       
       <View style={{ height: 100 }} />

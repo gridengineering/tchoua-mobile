@@ -1,20 +1,32 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  Image,
+  Modal,
+  TextInput,
+  Switch,
   Dimensions,
 } from "react-native";
+import { getBaseUrl, setBaseUrl } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
+import { ALL_LANGS, LANG_FLAGS, LANG_LABELS } from "../i18n";
 import { COLORS, MEMBER_THEMES, SPACING, SHADOW } from "../theme";
+import { confirmAction, showAlert } from "../utils/feedback";
 
 const { width } = Dimensions.get("window");
 
-export const ProfileScreen = () => {
+export const ProfileScreen = ({ navigation }: any) => {
   const { themeId, colors, setTheme } = useTheme();
+  const { user, lang, setLang, logout } = useAuth();
+  const [biometry, setBiometry] = useState(true);
+  const [notifications, setNotifications] = useState(true);
+  const [langModal, setLangModal] = useState(false);
+  const [settingsModal, setSettingsModal] = useState(false);
+  const [apiUrl, setApiUrl] = useState(getBaseUrl());
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
@@ -22,14 +34,19 @@ export const ProfileScreen = () => {
         <View style={styles.profileInfo}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <Text style={[styles.avatarText, { color: colors.primary }]}>M</Text>
+              <Text style={[styles.avatarText, { color: colors.primary }]}>
+                {user.name.charAt(0).toUpperCase()}
+              </Text>
             </View>
-            <TouchableOpacity style={[styles.editBadge, { backgroundColor: colors.secondary }]}>
+            <TouchableOpacity
+              style={[styles.editBadge, { backgroundColor: colors.secondary }]}
+              onPress={() => showAlert("Photo de profil", `Connecté en tant que ${user.name} (${user.email}).`)}
+            >
               <Text style={{ fontSize: 12 }}>📷</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.name}>Marie Ngono</Text>
-          <Text style={styles.location}>Yaoundé, Cameroun</Text>
+          <Text style={styles.name}>{user.name}</Text>
+          <Text style={styles.location}>{user.location}</Text>
           <View style={styles.rankBadge}>
             <Text style={styles.rankText}>NIVEAU : AMBASSADRICE 🏆</Text>
           </View>
@@ -124,31 +141,153 @@ export const ProfileScreen = () => {
         </View>
 
         {/* Menu Items */}
-        <View style={styles.menu}>
+        <View style={[styles.menu, { backgroundColor: colors.surface }]}>
           {[
-            { l: "Mon Portefeuille", i: "👛", r: "145 000 F" },
-            { l: "Sécurité & Biométrie", i: "🔒", r: "Activé" },
-            { l: "Paramètres", i: "⚙️" },
-            { l: "Langue", i: "🌐", r: "Français" },
-            { l: "Support & Aide", i: "🎧" },
+            {
+              l: "Mon Portefeuille",
+              i: "👛",
+              r: "145 000 F",
+              onPress: () => navigation?.navigate?.("wallet"),
+            },
+            {
+              l: "Sécurité & Biométrie",
+              i: "🔒",
+              r: biometry ? "Activé" : "Désactivé",
+              onPress: () => {
+                setBiometry((v) => !v);
+                showAlert("Sécurité", `Verrouillage biométrique ${!biometry ? "activé" : "désactivé"}.`);
+              },
+            },
+            {
+              l: "Paramètres",
+              i: "⚙️",
+              onPress: () => setSettingsModal(true),
+            },
+            {
+              l: "Langue",
+              i: "🌐",
+              r: LANG_LABELS[lang],
+              onPress: () => setLangModal(true),
+            },
+            {
+              l: "Support & Aide",
+              i: "🎧",
+              onPress: () =>
+                showAlert(
+                  "Support Tchoua",
+                  "Besoin d'aide ? Contactez le bureau de votre association ou écrivez à support@tchoua.cm."
+                ),
+            },
           ].map((item, i) => (
-            <TouchableOpacity key={i} style={styles.menuItem}>
-              <View style={styles.menuIcon}>
+            <TouchableOpacity key={i} style={styles.menuItem} onPress={item.onPress}>
+              <View style={[styles.menuIcon, { backgroundColor: colors.background }]}>
                 <Text style={{ fontSize: 18 }}>{item.i}</Text>
               </View>
-              <Text style={styles.menuLabel}>{item.l}</Text>
+              <Text style={[styles.menuLabel, { color: colors.text }]}>{item.l}</Text>
               <View style={{ flexDirection: "row", alignItems: "center" }}>
-                {item.r && <Text style={styles.menuRight}>{item.r}</Text>}
+                {item.r && <Text style={[styles.menuRight, { color: colors.primary }]}>{item.r}</Text>}
                 <Text style={styles.chevron}>›</Text>
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() =>
+            confirmAction(
+              "Déconnexion",
+              "Voulez-vous vraiment vous déconnecter ?",
+              () => {
+                logout();
+              },
+              "Se déconnecter"
+            )
+          }
+        >
           <Text style={styles.logoutText}>DÉCONNEXION</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Language Modal */}
+      <Modal visible={langModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: colors.text, marginBottom: SPACING.md }}>
+              Choisir la langue
+            </Text>
+            {ALL_LANGS.map((l) => (
+              <TouchableOpacity
+                key={l}
+                onPress={() => {
+                  setLang(l);
+                  setLangModal(false);
+                }}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.lightGray,
+                }}
+              >
+                <Text style={{ fontSize: 15, fontWeight: l === lang ? "900" : "600", color: colors.text }}>
+                  {LANG_FLAGS[l]} {LANG_LABELS[l]}
+                </Text>
+                {l === lang && <Text style={{ color: colors.secondary, fontWeight: "900" }}>✓</Text>}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              onPress={() => setLangModal(false)}
+              style={{ marginTop: SPACING.md, padding: 14, borderRadius: 12, backgroundColor: colors.lightGray, alignItems: "center" }}
+            >
+              <Text style={{ fontWeight: "800", color: colors.text }}>Fermer</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal visible={settingsModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: colors.text, marginBottom: SPACING.md }}>
+              Paramètres
+            </Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: SPACING.md }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.text }}>Notifications push</Text>
+              <Switch value={notifications} onValueChange={setNotifications} />
+            </View>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.gray, marginBottom: 4 }}>
+              URL du serveur API
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: colors.lightGray, borderRadius: 10, padding: 10, color: colors.text, marginBottom: SPACING.md }}
+              value={apiUrl}
+              onChangeText={setApiUrl}
+              autoCapitalize="none"
+            />
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setSettingsModal(false)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: colors.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: colors.text }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setBaseUrl(apiUrl.trim() || "http://localhost:3000/api");
+                  setSettingsModal(false);
+                  showAlert("Paramètres", "Configuration enregistrée.");
+                }}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: colors.primary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: "#fff" }}>Enregistrer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View style={{ height: 100 }} />
     </ScrollView>

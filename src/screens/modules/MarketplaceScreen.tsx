@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,20 +7,65 @@ import {
   TouchableOpacity,
   Dimensions,
   TextInput,
-  Image,
+  Modal,
 } from "react-native";
 import { COLORS, SPACING, SHADOW } from "../../theme";
+import { showAlert } from "../../utils/feedback";
 
 const { width } = Dimensions.get("window");
 
+const INITIAL_ITEMS = [
+  { id: "1", title: "Sac à main cuir", cat: "Mode", priceNum: 15000, seller: "Amina K.", time: "2h", image: "👜" },
+  { id: "2", title: "Panier Fruits Frais", cat: "Alimentation", priceNum: 5000, seller: "Bio Garden", time: "5h", image: "🍎" },
+  { id: "3", title: "iPhone 12 Pro", cat: "Électronique", priceNum: 350000, seller: "Tech Store", time: "1j", image: "📱" },
+  { id: "4", title: "Tee-shirt Coton", cat: "Mode", priceNum: 3500, seller: "Moda Fashion", time: "2j", image: "👕" },
+];
+
 export const MarketplaceScreen = ({ navigation }: any) => {
   const CATEGORIES = ["Tout", "Électronique", "Mode", "Alimentation", "Services"];
-  const ITEMS = [
-    { title: "Sac à main cuir", price: "15 000 F", seller: "Amina K.", time: "2h ago", image: "👜" },
-    { title: "Panier Fruits Frais", price: "5 000 F", seller: "Bio Garden", time: "5h ago", image: "🍎" },
-    { title: "iPhone 12 Pro", price: "350 000 F", seller: "Tech Store", time: "1d ago", image: "📱" },
-    { title: "Tee-shirt Coton", price: "3 500 F", seller: "Moda Fashion", time: "2d ago", image: "👕" },
-  ];
+  const [selectedCat, setSelectedCat] = useState("Tout");
+  const [search, setSearch] = useState("");
+  const [items, setItems] = useState(INITIAL_ITEMS);
+  const [cart, setCart] = useState<typeof INITIAL_ITEMS>([]);
+  const [cartModal, setCartModal] = useState(false);
+  const [sellModal, setSellModal] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+
+  const filtered = items.filter((item) => {
+    const matchCat = selectedCat === "Tout" || item.cat === selectedCat;
+    const matchSearch = item.title.toLowerCase().includes(search.toLowerCase());
+    return matchCat && matchSearch;
+  });
+
+  const addToCart = (item: (typeof INITIAL_ITEMS)[0]) => {
+    setCart((prev) => [...prev, item]);
+    showAlert("Ajouté au panier", `"${item.title}" a été ajouté à votre panier.`);
+  };
+
+  const handleSell = () => {
+    const priceNum = Number(newPrice.replace(/\s+/g, ""));
+    if (!newTitle.trim() || !priceNum || priceNum <= 0) {
+      showAlert("Champs requis", "Veuillez renseigner le nom et le prix de l'article.");
+      return;
+    }
+    setItems((prev) => [
+      {
+        id: String(Date.now()),
+        title: newTitle.trim(),
+        cat: selectedCat === "Tout" ? "Services" : selectedCat,
+        priceNum,
+        seller: "Moi",
+        time: "À l'instant",
+        image: "🏷️",
+      },
+      ...prev,
+    ]);
+    setNewTitle("");
+    setNewPrice("");
+    setSellModal(false);
+    showAlert("Annonce publiée", "Votre article est maintenant visible sur la Marketplace.");
+  };
 
   return (
     <View style={styles.container}>
@@ -30,35 +75,47 @@ export const MarketplaceScreen = ({ navigation }: any) => {
             <Text style={styles.backText}>‹</Text>
           </TouchableOpacity>
           <Text style={styles.title}>Marketplace</Text>
-          <TouchableOpacity style={styles.cartBtn}>
-            <Text style={{ fontSize: 20 }}>🛒</Text>
+          <TouchableOpacity style={styles.cartBtn} onPress={() => setCartModal(true)}>
+            <Text style={{ fontSize: 18 }}>🛒 {cart.length > 0 ? `(${cart.length})` : ""}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.searchBox}>
           <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput style={styles.searchInput} placeholder="Rechercher un produit..." />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher un produit..."
+            value={search}
+            onChangeText={setSearch}
+          />
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-          {CATEGORIES.map((cat, i) => (
-            <TouchableOpacity key={i} style={[styles.catBadge, i === 0 && styles.catBadgeActive]}>
-              <Text style={[styles.catText, i === 0 && styles.catTextActive]}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
+          {CATEGORIES.map((cat, i) => {
+            const active = selectedCat === cat;
+            return (
+              <TouchableOpacity
+                key={i}
+                onPress={() => setSelectedCat(cat)}
+                style={[styles.catBadge, active && styles.catBadgeActive]}
+              >
+                <Text style={[styles.catText, active && styles.catTextActive]}>{cat}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.grid}>
-          {ITEMS.map((item, i) => (
-            <TouchableOpacity key={i} style={styles.productCard}>
+          {filtered.map((item) => (
+            <TouchableOpacity key={item.id} style={styles.productCard} onPress={() => addToCart(item)}>
               <View style={styles.productImage}>
                 <Text style={{ fontSize: 64 }}>{item.image}</Text>
               </View>
               <View style={styles.productInfo}>
                 <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.productPrice}>{item.price}</Text>
+                <Text style={styles.productPrice}>{item.priceNum.toLocaleString("fr-FR")} F</Text>
                 <View style={styles.productFooter}>
                   <Text style={styles.productSeller}>{item.seller}</Text>
                   <Text style={styles.productTime}>{item.time}</Text>
@@ -70,10 +127,92 @@ export const MarketplaceScreen = ({ navigation }: any) => {
         <View style={{ height: 120 }} />
       </ScrollView>
 
-      <TouchableOpacity style={styles.sellFab}>
+      <TouchableOpacity style={styles.sellFab} onPress={() => setSellModal(true)}>
         <Text style={styles.sellFabIcon}>📸</Text>
         <Text style={styles.sellFabText}>VENDRE</Text>
       </TouchableOpacity>
+
+      <Modal visible={cartModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.md }}>
+              Mon Panier ({cart.length})
+            </Text>
+            {cart.length === 0 ? (
+              <Text style={{ color: COLORS.gray, marginBottom: SPACING.md }}>Votre panier est vide.</Text>
+            ) : (
+              <>
+                {cart.map((c, idx) => (
+                  <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 }}>
+                    <Text style={{ fontWeight: "700" }}>{c.title}</Text>
+                    <Text style={{ fontWeight: "800", color: COLORS.primary }}>{c.priceNum.toLocaleString("fr-FR")} F</Text>
+                  </View>
+                ))}
+                <Text style={{ marginTop: SPACING.sm, fontWeight: "900", fontSize: 16 }}>
+                  Total : {cart.reduce((s, c) => s + c.priceNum, 0).toLocaleString("fr-FR")} F
+                </Text>
+              </>
+            )}
+            <View style={{ flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.md }}>
+              <TouchableOpacity
+                onPress={() => setCartModal(false)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700" }}>Fermer</Text>
+              </TouchableOpacity>
+              {cart.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setCart([]);
+                    setCartModal(false);
+                    showAlert("Commande validée", "Votre commande a été transmise aux vendeurs.");
+                  }}
+                  style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
+                >
+                  <Text style={{ fontWeight: "800", color: COLORS.white }}>Commander</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={sellModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.md }}>
+              Publier un article
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
+              placeholder="Nom de l'article"
+              value={newTitle}
+              onChangeText={setNewTitle}
+            />
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
+              placeholder="Prix (FCFA)"
+              keyboardType="numeric"
+              value={newPrice}
+              onChangeText={setNewPrice}
+            />
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setSellModal(false)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700" }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSell}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.secondary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: COLORS.white }}>Publier</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };

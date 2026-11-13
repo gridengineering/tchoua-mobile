@@ -1,23 +1,60 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  Modal,
+  TextInput,
   Dimensions,
 } from "react-native";
 import { COLORS, SPACING, SHADOW } from "../../theme";
+import { showAlert } from "../../utils/feedback";
 
 const { width } = Dimensions.get("window");
 
-export const SolidariteScreen = ({ navigation }: any) => {
+export const SolidariteScreen = ({ navigation, route }: any) => {
+  const [aidModal, setAidModal] = useState(false);
+  const [category, setCategory] = useState("Caisse Naissance");
+  const [amount, setAmount] = useState("50000");
+  const [reason, setReason] = useState("");
+  const [requests, setRequests] = useState([
+    { id: "1", title: "🍼 Aide Naissance - J. Kamdem", status: "Vérification", step: 2 },
+  ]);
+
+  useEffect(() => {
+    if (route?.params?.openAidModal) {
+      setAidModal(true);
+    }
+  }, [route?.params?.openAidModal]);
+
   const CAISSES = [
     { label: "Caisse Décès", icon: "🕊️", balance: "250k F", help: "Demander aide" },
     { label: "Caisse Naissance", icon: "👶", balance: "120k F", help: "Déclarer" },
     { label: "Caisse Mariage", icon: "💒", balance: "300k F", help: "Déclarer" },
     { label: "Caisse Santé", icon: "🏥", balance: "450k F", help: "Urgence" },
   ];
+
+  const submitAid = () => {
+    const amt = Number(amount.replace(/\s+/g, ""));
+    if (!amt || amt <= 0) {
+      showAlert("Montant invalide", "Veuillez saisir un montant valide.");
+      return;
+    }
+    setRequests((prev) => [
+      {
+        id: String(Date.now()),
+        title: `🤝 ${category} (${amt.toLocaleString("fr-FR")} F)`,
+        status: "Soumis",
+        step: 1,
+      },
+      ...prev,
+    ]);
+    setReason("");
+    setAidModal(false);
+    showAlert("Demande enregistrée", `Votre demande "${category}" a été transmise au bureau.`);
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -35,13 +72,26 @@ export const SolidariteScreen = ({ navigation }: any) => {
 
       <View style={styles.grid}>
         {CAISSES.map((caisse, i) => (
-          <TouchableOpacity key={i} style={styles.caisseCard}>
+          <TouchableOpacity
+            key={i}
+            style={styles.caisseCard}
+            onPress={() => {
+              setCategory(caisse.label);
+              setAidModal(true);
+            }}
+          >
             <View style={styles.caisseIcon}>
               <Text style={{ fontSize: 32 }}>{caisse.icon}</Text>
             </View>
             <Text style={styles.caisseLabel}>{caisse.label}</Text>
             <Text style={styles.caisseBalance}>{caisse.balance}</Text>
-            <TouchableOpacity style={styles.caisseAction}>
+            <TouchableOpacity
+              style={styles.caisseAction}
+              onPress={() => {
+                setCategory(caisse.label);
+                setAidModal(true);
+              }}
+            >
               <Text style={styles.caisseActionText}>{caisse.help}</Text>
             </TouchableOpacity>
           </TouchableOpacity>
@@ -50,31 +100,73 @@ export const SolidariteScreen = ({ navigation }: any) => {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Demandes en cours</Text>
-        <View style={styles.requestCard}>
-          <View style={styles.requestHeader}>
-            <Text style={styles.requestType}>🍼 Aide Naissance - J. Kamdem</Text>
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>Vérification</Text>
+        {requests.map((r) => (
+          <View key={r.id} style={[styles.requestCard, { marginBottom: SPACING.sm }]}>
+            <View style={styles.requestHeader}>
+              <Text style={styles.requestType}>{r.title}</Text>
+              <View style={styles.tag}>
+                <Text style={styles.tagText}>{r.status}</Text>
+              </View>
+            </View>
+            <View style={styles.timeline}>
+              <View style={[styles.timelineDot, r.step >= 1 && styles.dotActive]} />
+              <View style={[styles.timelineLine, r.step >= 2 && styles.lineActive]} />
+              <View style={[styles.timelineDot, r.step >= 2 && styles.dotActive]} />
+              <View style={[styles.timelineLine, r.step >= 3 && styles.lineActive]} />
+              <View style={[styles.timelineDot, r.step >= 3 && styles.dotActive]} />
+            </View>
+            <View style={styles.timelineLabels}>
+              <Text style={r.step >= 1 ? styles.labelActive : undefined}>Soumis</Text>
+              <Text style={r.step >= 2 ? styles.labelActive : undefined}>Validé</Text>
+              <Text style={r.step >= 3 ? styles.labelActive : undefined}>Payé</Text>
             </View>
           </View>
-          <View style={styles.timeline}>
-            <View style={[styles.timelineDot, styles.dotActive]} />
-            <View style={[styles.timelineLine, styles.lineActive]} />
-            <View style={[styles.timelineDot, styles.dotActive]} />
-            <View style={styles.timelineLine} />
-            <View style={styles.timelineDot} />
-          </View>
-          <View style={styles.timelineLabels}>
-            <Text style={styles.labelActive}>Soumis</Text>
-            <Text style={styles.labelActive}>Validé</Text>
-            <Text>Payé</Text>
-          </View>
-        </View>
+        ))}
       </View>
 
-      <TouchableOpacity style={styles.mainAction}>
+      <TouchableOpacity style={styles.mainAction} onPress={() => setAidModal(true)}>
         <Text style={styles.mainActionText}>+ CRÉER UNE NOUVELLE DEMANDE</Text>
       </TouchableOpacity>
+
+      <Modal visible={aidModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.sm }}>
+              Demander une aide solidaire
+            </Text>
+            <Text style={{ fontSize: 13, color: COLORS.gray, marginBottom: SPACING.md }}>
+              Catégorie : {category}
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
+              placeholder="Montant souhaité (FCFA)"
+              keyboardType="numeric"
+              value={amount}
+              onChangeText={setAmount}
+            />
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
+              placeholder="Motif / justificatif"
+              value={reason}
+              onChangeText={setReason}
+            />
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setAidModal(false)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={submitAid}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: COLORS.white }}>Envoyer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       
       <View style={{ height: 100 }} />
     </ScrollView>

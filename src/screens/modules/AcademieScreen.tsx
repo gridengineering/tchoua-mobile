@@ -1,22 +1,40 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  TextInput,
   Dimensions,
 } from "react-native";
 import { COLORS, SPACING, SHADOW } from "../../theme";
+import { showAlert } from "../../utils/feedback";
 
 const { width } = Dimensions.get("window");
 
+const INITIAL_COURSES = [
+  { id: "1", title: "Bases de la Tontine", cat: "Finance", level: "Débutant", duration: "15 min", progress: 1.0, icon: "📖" },
+  { id: "2", title: "Gestion d'Association", cat: "Gestion", level: "Intermédiaire", duration: "45 min", progress: 0.45, icon: "🏛️" },
+  { id: "3", title: "Droit & Réglementation", cat: "Légal", level: "Avancé", duration: "30 min", progress: 0, icon: "⚖️" },
+];
+
 export const AcademieScreen = ({ navigation }: any) => {
-  const COURSES = [
-    { title: "Bases de la Tontine", cat: "Finance", level: "Débutant", duration: "15 min", progress: 1.0, icon: "📖" },
-    { title: "Gestion d'Association", cat: "Gestion", level: "Intermédiaire", duration: "45 min", progress: 0.45, icon: "🏛️" },
-    { title: "Droit & Réglementation", cat: "Légal", level: "Avancé", duration: "30 min", progress: 0, icon: "⚖️" },
-  ];
+  const [search, setSearch] = useState("");
+  const [courses, setCourses] = useState(INITIAL_COURSES);
+
+  const filtered = courses.filter(
+    (c) =>
+      c.title.toLowerCase().includes(search.toLowerCase()) ||
+      c.cat.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const openCourse = (id: string, title: string) => {
+    setCourses((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, progress: Math.min(1, Number((c.progress + 0.25).toFixed(2))) } : c))
+    );
+    showAlert(title, "Module ouvert : votre progression a été mise à jour (+25%).");
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -32,17 +50,27 @@ export const AcademieScreen = ({ navigation }: any) => {
         <Text style={styles.heroDesc}>Des formations gratuites pour maîtriser la gestion financière et associative.</Text>
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>🔍</Text>
-          <Text style={styles.searchPlaceholder}>Rechercher un cours...</Text>
+          <TextInput
+            style={{ flex: 1, color: COLORS.black, fontSize: 13 }}
+            placeholder="Rechercher un cours..."
+            placeholderTextColor={COLORS.gray}
+            value={search}
+            onChangeText={setSearch}
+          />
         </View>
       </View>
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Mes Cours</Text>
-          <Text style={styles.seeAll}>Historique</Text>
+          <Text style={styles.seeAll}>Progression</Text>
         </View>
-        {COURSES.map((course, i) => (
-          <TouchableOpacity key={i} style={styles.courseCard}>
+        {filtered.map((course) => (
+          <TouchableOpacity
+            key={course.id}
+            style={styles.courseCard}
+            onPress={() => openCourse(course.id, course.title)}
+          >
             <View style={styles.courseIcon}>
               <Text style={{ fontSize: 32 }}>{course.icon}</Text>
             </View>
@@ -67,7 +95,11 @@ export const AcademieScreen = ({ navigation }: any) => {
         <Text style={styles.sectionTitle}>Bibliothèque</Text>
         <View style={styles.grid}>
           {["Guide Tontine", "Modèles PV", "Lexique Financier", "Statuts Types"].map((item, i) => (
-            <TouchableOpacity key={i} style={styles.docCard}>
+            <TouchableOpacity
+              key={i}
+              style={styles.docCard}
+              onPress={() => showAlert(item, `Document "${item}" prêt à être consulté (PDF · 1.2 Mo).`)}
+            >
               <Text style={styles.docIcon}>📄</Text>
               <Text style={styles.docLabel}>{item}</Text>
               <Text style={styles.docMeta}>PDF · 1.2 Mo</Text>

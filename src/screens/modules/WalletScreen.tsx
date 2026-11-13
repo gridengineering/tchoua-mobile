@@ -1,8 +1,18 @@
-import React from "react";
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView } from "react-native";
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+  TouchableOpacity,
+  ScrollView,
+  Modal,
+  TextInput,
+} from "react-native";
 import { COLORS, SPACING, SHADOW } from "../../theme";
+import { showAlert } from "../../utils/feedback";
 
-const TRANSACTIONS = [
+const INITIAL_TRANSACTIONS = [
   { id: "1", type: "deposit", amount: "+ 50 000 FCFA", date: "Aujourd'hui, 10:30", label: "Rechargement Orange Money" },
   { id: "2", type: "payment", amount: "- 15 000 FCFA", date: "Hier, 14:00", label: "Cotisation Tontine Ndi" },
   { id: "3", type: "receive", amount: "+ 100 000 FCFA", date: "05 Mai 2026", label: "Aide Solidarité (Naissance)" },
@@ -10,6 +20,47 @@ const TRANSACTIONS = [
 ];
 
 export const WalletScreen = ({ navigation }: any) => {
+  const [balance, setBalance] = useState(115000);
+  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
+  const [modalMode, setModalMode] = useState<"deposit" | "withdraw" | "transfer" | null>(null);
+  const [amountInput, setAmountInput] = useState("");
+  const [noteInput, setNoteInput] = useState("");
+
+  const handleConfirm = () => {
+    const amt = Number(amountInput.replace(/\s+/g, ""));
+    if (!amt || amt <= 0) {
+      showAlert("Montant invalide", "Veuillez saisir un montant valide.");
+      return;
+    }
+    if (modalMode !== "deposit" && amt > balance) {
+      showAlert("Solde insuffisant", "Votre solde disponible est insuffisant pour cette opération.");
+      return;
+    }
+    const nextBalance = modalMode === "deposit" ? balance + amt : balance - amt;
+    const prefix = modalMode === "deposit" ? "+" : "-";
+    const label =
+      modalMode === "deposit"
+        ? noteInput.trim() || "Rechargement Mobile Money"
+        : modalMode === "withdraw"
+          ? noteInput.trim() || "Retrait Mobile Money"
+          : noteInput.trim() || "Transfert vers membre";
+    setBalance(nextBalance);
+    setTransactions((prev) => [
+      {
+        id: String(Date.now()),
+        type: modalMode === "deposit" ? "deposit" : modalMode === "withdraw" ? "withdraw" : "payment",
+        amount: `${prefix} ${amt.toLocaleString("fr-FR")} FCFA`,
+        date: "À l'instant",
+        label,
+      },
+      ...prev,
+    ]);
+    setAmountInput("");
+    setNoteInput("");
+    setModalMode(null);
+    showAlert("Opération effectuée", `Nouveau solde : ${nextBalance.toLocaleString("fr-FR")} FCFA.`);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -23,20 +74,20 @@ export const WalletScreen = ({ navigation }: any) => {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Solde Disponible</Text>
-          <Text style={styles.balanceAmount}>115 000 FCFA</Text>
+          <Text style={styles.balanceAmount}>{balance.toLocaleString("fr-FR")} FCFA</Text>
           
           <View style={styles.actionRow}>
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => setModalMode("deposit")}>
               <Text style={styles.actionIcon}>⬇️</Text>
               <Text style={styles.actionText}>Recharger</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => setModalMode("withdraw")}>
               <Text style={styles.actionIcon}>⬆️</Text>
               <Text style={styles.actionText}>Retirer</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.actionBtn}>
+            <TouchableOpacity style={styles.actionBtn} onPress={() => setModalMode("transfer")}>
               <Text style={styles.actionIcon}>🔄</Text>
               <Text style={styles.actionText}>Transférer</Text>
             </TouchableOpacity>
@@ -45,7 +96,7 @@ export const WalletScreen = ({ navigation }: any) => {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Transactions Récentes</Text>
-          {TRANSACTIONS.map(tx => (
+          {transactions.map(tx => (
             <View key={tx.id} style={styles.txItem}>
               <View style={styles.txIconContainer}>
                 <Text style={styles.txIcon}>
@@ -63,6 +114,43 @@ export const WalletScreen = ({ navigation }: any) => {
           ))}
         </View>
       </ScrollView>
+
+      <Modal visible={Boolean(modalMode)} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.md }}>
+              {modalMode === "deposit" ? "Recharger le portefeuille" : modalMode === "withdraw" ? "Retirer des fonds" : "Transférer à un membre"}
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
+              placeholder="Montant (FCFA)"
+              keyboardType="numeric"
+              value={amountInput}
+              onChangeText={setAmountInput}
+            />
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
+              placeholder={modalMode === "transfer" ? "Destinataire" : "Opérateur / Motif (optionnel)"}
+              value={noteInput}
+              onChangeText={setNoteInput}
+            />
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setModalMode(null)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleConfirm}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: COLORS.white }}>Valider</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };

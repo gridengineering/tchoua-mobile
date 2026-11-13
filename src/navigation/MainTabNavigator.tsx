@@ -105,7 +105,17 @@ export const MainTabNavigator = ({ navigation }: any) => {
       <PlusMenu
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
-        onNavigate={(route) => navigation.navigate(route)}
+        onNavigate={(route) => {
+          if (route === "versement") {
+            navigation.navigate("Main", { screen: "Tontines", params: { openPayModal: Date.now() } });
+          } else if (route === "aide") {
+            navigation.navigate("solidarite", { openAidModal: Date.now() });
+          } else if (route === "pret_req") {
+            navigation.navigate("prets", { openLoanModal: Date.now() });
+          } else {
+            navigation.navigate(route);
+          }
+        }}
       />
     </>
   );

@@ -10,6 +10,7 @@ import {
   Platform,
 } from "react-native";
 import { COLORS, SPACING, SHADOW } from "../theme";
+import { showAlert } from "../utils/feedback";
 
 export const ChatScreen = () => {
   const [messages, setMessages] = useState([
@@ -45,7 +46,10 @@ export const ChatScreen = () => {
             <Text style={styles.groupStatus}>12 membres · En ligne</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.callButton}>
+        <TouchableOpacity
+          style={styles.callButton}
+          onPress={() => showAlert("Appel de groupe", "Connexion à la salle audio Tontine Entrepreneurs...")}
+        >
           <Text style={{ fontSize: 20 }}>📞</Text>
         </TouchableOpacity>
       </View>
@@ -75,7 +79,21 @@ export const ChatScreen = () => {
         keyboardVerticalOffset={100}
       >
         <View style={styles.inputArea}>
-          <TouchableOpacity style={styles.attachButton}>
+          <TouchableOpacity
+            style={styles.attachButton}
+            onPress={() =>
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: Date.now(),
+                  text: "📎 Reçu de cotisation joint (#TCH-2026)",
+                  user: "Moi",
+                  time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                  me: true,
+                },
+              ])
+            }
+          >
             <Text style={{ fontSize: 20 }}>📎</Text>
           </TouchableOpacity>
           <TextInput

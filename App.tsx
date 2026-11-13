@@ -12,7 +12,15 @@ import {
   StyleSheet,
   Image,
 } from "react-native";
+import { Modal } from "react-native";
+import { AuthProvider, useAuth } from "./src/context/AuthContext";
 import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
+import { showAlert } from "./src/utils/feedback";
+import { MembresScreen } from "./src/screens/modules/MembresScreen";
+import { EvenementsScreen } from "./src/screens/modules/EvenementsScreen";
+import { ConseilsIAScreen } from "./src/screens/modules/ConseilsIAScreen";
+import { RapportsScreen } from "./src/screens/modules/RapportsScreen";
+import { CreateAssociationScreen } from "./src/screens/modules/CreateAssociationScreen";
 import { COLORS, SHADOW, SPACING } from "./src/theme";
 import { MainTabNavigator } from "./src/navigation/MainTabNavigator";
 import { EpargneScreen } from "./src/screens/modules/EpargneScreen";
@@ -30,23 +38,43 @@ import { CycleTontineScreen } from "./src/screens/modules/CycleTontineScreen";
 
 const Stack = createStackNavigator();
 
-function LoginScreen({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState("demo@tchoua.cm");
-  const [pwd, setPwd] = useState("demo123");
+function LoginScreen() {
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
+  const [pwd, setPwd] = useState("");
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [resetVisible, setResetVisible] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
 
   const handleLogin = async () => {
+    setErrorMsg(null);
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 1000));
+    const res = await login(email, pwd);
     setLoading(false);
-    onLogin();
+    if (!res.ok && res.error) {
+      setErrorMsg(res.error);
+      showAlert("Connexion www.tchoua.com", res.error);
+    }
   };
 
-  const handleSocialLogin = async (provider: string) => {
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1000)); // Simulation Firebase Auth
-    setLoading(false);
-    onLogin();
+  const handleSocialLogin = (provider: string) => {
+    showAlert(
+      `Connexion ${provider}`,
+      "Veuillez vous connecter avec vos identifiants www.tchoua.com (email et mot de passe)."
+    );
+  };
+
+  const handleResetPassword = () => {
+    if (!resetEmail.trim()) {
+      showAlert("Email requis", "Veuillez saisir votre adresse email.");
+      return;
+    }
+    setResetVisible(false);
+    showAlert(
+      "Lien envoyé",
+      `Un email de réinitialisation a été envoyé à ${resetEmail.trim()}.`
+    );
   };
 
   return (
@@ -61,10 +89,15 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           />
         </View>
         <Text style={styles.brandTitle}>Tchoua</Text>
-        <Text style={styles.brandSubtitle}>Solidarité Digitale · 100% Gratuit</Text>
+        <Text style={styles.brandSubtitle}>Connecté à www.tchoua.com</Text>
       </View>
 
       <View style={styles.loginCard}>
+        {errorMsg ? (
+          <Text style={{ color: COLORS.danger, fontSize: 12, fontWeight: "700", marginBottom: SPACING.sm }}>
+            {errorMsg}
+          </Text>
+        ) : null}
         <Text style={styles.inputLabel}>Email</Text>
         <TextInput
           style={styles.input}
@@ -119,7 +152,7 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.forgotPassword}>
+        <TouchableOpacity style={styles.forgotPassword} onPress={() => setResetVisible(true)}>
           <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
         </TouchableOpacity>
       </View>
@@ -127,16 +160,69 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
       <View style={styles.loginFooter}>
         <Text style={styles.footerText}>
           En vous connectant, vous acceptez nos{" "}
-          <Text style={styles.footerLink}>Conditions d'utilisation</Text>
+          <Text
+            style={styles.footerLink}
+            onPress={() =>
+              showAlert(
+                "Conditions d'utilisation",
+                "Tchoua est une plateforme open-source et gratuite de gestion d'associations et de tontines. Vos données restent strictement confidentielles au sein de vos associations."
+              )
+            }
+          >
+            Conditions d&apos;utilisation
+          </Text>
         </Text>
       </View>
+
+      <Modal visible={resetVisible} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.sm }}>
+              Réinitialiser le mot de passe
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={resetEmail}
+              onChangeText={setResetEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              placeholder="votre@email.com"
+            />
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setResetVisible(false)}
+                style={{ flex: 1, padding: 14, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleResetPassword}
+                style={{ flex: 1, padding: 14, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: COLORS.white }}>Envoyer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 function AppShell() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const { loggedIn, checking } = useAuth();
   const { colors } = useTheme();
+
+  if (checking) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={COLORS.white} />
+        <Text style={{ color: COLORS.white, marginTop: 12, fontWeight: "700" }}>
+          Connexion à www.tchoua.com...
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.primary }}>
@@ -144,9 +230,7 @@ function AppShell() {
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {!loggedIn ? (
-            <Stack.Screen name="Login">
-              {() => <LoginScreen onLogin={() => setLoggedIn(true)} />}
-            </Stack.Screen>
+            <Stack.Screen name="Login" component={LoginScreen} />
           ) : (
             <>
               <Stack.Screen name="Main" component={MainTabNavigator} />
@@ -162,6 +246,11 @@ function AppShell() {
               <Stack.Screen name="historique" component={HistoriqueScreen} />
               <Stack.Screen name="interets" component={InteretsScreen} />
               <Stack.Screen name="cycle_tontine" component={CycleTontineScreen} />
+              <Stack.Screen name="membres" component={MembresScreen} />
+              <Stack.Screen name="evenements" component={EvenementsScreen} />
+              <Stack.Screen name="conseils" component={ConseilsIAScreen} />
+              <Stack.Screen name="rapports" component={RapportsScreen} />
+              <Stack.Screen name="create_assoc" component={CreateAssociationScreen} />
             </>
           )}
         </Stack.Navigator>
@@ -172,9 +261,11 @@ function AppShell() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppShell />
-    </ThemeProvider>
+    <AuthProvider>
+      <ThemeProvider>
+        <AppShell />
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
 

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -8,15 +8,26 @@ import {
   Dimensions,
 } from "react-native";
 import { COLORS, SPACING, SHADOW } from "../../theme";
+import { showAlert } from "../../utils/feedback";
 
 const { width } = Dimensions.get("window");
 
+const ELIGIBLE_MEMBERS = ["Marie Ngono", "Jean Mbarga", "Pauline Fotso", "Samuel Kamdem", "Clarisse Tchinda"];
+
 export const SessionsScreen = ({ navigation }: any) => {
+  const [selectedDay, setSelectedDay] = useState(15);
+  const [lastWinner, setLastWinner] = useState<string | null>(null);
   const SESSIONS = [
     { title: "Réunion Mensuelle Mai", type: "AG", date: "15 Mai 2026", time: "15:00", location: "Foyer Bandjoun, Yaoundé", icon: "🏛️" },
     { title: "Tirage au sort Tontine A", type: "Tirage", date: "20 Mai 2026", time: "18:00", location: "Lien Visioconférence", icon: "🎲" },
     { title: "Session Épargne & Crédit", type: "Bureau", date: "02 Juin 2026", time: "10:00", location: "Bureau AMSED", icon: "💼" },
   ];
+
+  const runLiveDraw = () => {
+    const winner = ELIGIBLE_MEMBERS[Math.floor(Math.random() * ELIGIBLE_MEMBERS.length)];
+    setLastWinner(winner);
+    showAlert("🎲 Résultat du tirage", `Bénéficiaire désigné pour cette session : ${winner} !`);
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -41,19 +52,33 @@ export const SessionsScreen = ({ navigation }: any) => {
           ))}
         </View>
         <View style={styles.datesGrid}>
-          {Array.from({ length: 31 }).map((_, i) => (
-            <View key={i} style={[styles.dateCell, i + 1 === 15 && styles.dateCellActive]}>
-              <Text style={[styles.dateText, i + 1 === 15 && styles.dateTextActive]}>{i + 1}</Text>
-              {(i + 1 === 15 || i + 1 === 20) && <View style={styles.dot} />}
-            </View>
-          ))}
+          {Array.from({ length: 31 }).map((_, i) => {
+            const day = i + 1;
+            const active = day === selectedDay;
+            return (
+              <TouchableOpacity
+                key={i}
+                onPress={() => setSelectedDay(day)}
+                style={[styles.dateCell, active && styles.dateCellActive]}
+              >
+                <Text style={[styles.dateText, active && styles.dateTextActive]}>{day}</Text>
+                {(day === 15 || day === 20) && <View style={styles.dot} />}
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Prochaines Sessions</Text>
         {SESSIONS.map((session, i) => (
-          <TouchableOpacity key={i} style={styles.sessionItem}>
+          <TouchableOpacity
+            key={i}
+            style={styles.sessionItem}
+            onPress={() =>
+              showAlert(session.title, `${session.date} à ${session.time}\nLieu : ${session.location}`)
+            }
+          >
             <View style={styles.sessionIcon}>
               <Text style={{ fontSize: 24 }}>{session.icon}</Text>
             </View>
@@ -71,7 +96,15 @@ export const SessionsScreen = ({ navigation }: any) => {
         ))}
       </View>
 
-      <TouchableOpacity style={styles.tirageAction}>
+      {lastWinner && (
+        <View style={{ marginHorizontal: SPACING.lg, marginBottom: SPACING.md, padding: SPACING.md, borderRadius: 12, backgroundColor: COLORS.success + "15" }}>
+          <Text style={{ color: COLORS.success, fontWeight: "800", textAlign: "center" }}>
+            🎉 Dernier bénéficiaire tiré : {lastWinner}
+          </Text>
+        </View>
+      )}
+
+      <TouchableOpacity style={styles.tirageAction} onPress={runLiveDraw}>
         <Text style={styles.tirageIcon}>🎲</Text>
         <Text style={styles.tirageText}>LANCER LE TIRAGE (EN DIRECT)</Text>
       </TouchableOpacity>

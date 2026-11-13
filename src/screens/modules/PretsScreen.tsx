@@ -1,21 +1,91 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
+  Modal,
+  TextInput,
   Dimensions,
 } from "react-native";
 import { COLORS, SPACING, SHADOW } from "../../theme";
+import { showAlert } from "../../utils/feedback";
 
 const { width } = Dimensions.get("window");
 
-export const PretsScreen = ({ navigation }: any) => {
-  const LOANS = [
-    { label: "Prêt Scolaire", amount: "200 000 F", remaining: "85 000 F", nextDate: "15 Mai", status: "En cours", color: COLORS.success },
-    { label: "Besoin Fond de Roulement", amount: "500 000 F", remaining: "500 000 F", nextDate: "Juin 2026", status: "Accordé", color: COLORS.info },
-  ];
+const INITIAL_LOANS = [
+  { id: "1", label: "Prêt Scolaire", amountNum: 200000, remainingNum: 85000, nextDate: "15 Mai", status: "En cours", color: COLORS.success },
+  { id: "2", label: "Besoin Fond de Roulement", amountNum: 500000, remainingNum: 500000, nextDate: "Juin 2026", status: "Accordé", color: COLORS.info },
+];
+
+export const PretsScreen = ({ navigation, route }: any) => {
+  const [loans, setLoans] = useState(INITIAL_LOANS);
+  const [payTarget, setPayTarget] = useState<(typeof INITIAL_LOANS)[0] | null>(null);
+  const [payAmount, setPayAmount] = useState("25000");
+  const [reqModal, setReqModal] = useState(false);
+  const [reqLabel, setReqLabel] = useState("");
+  const [reqAmount, setReqAmount] = useState("");
+  const [reqDuration, setReqDuration] = useState("6 mois");
+
+  useEffect(() => {
+    if (route?.params?.openLoanModal) {
+      setReqModal(true);
+    }
+  }, [route?.params?.openLoanModal]);
+
+  const totalRemaining = loans.reduce((s, l) => s + l.remainingNum, 0);
+
+  const confirmRepayment = () => {
+    if (!payTarget) return;
+    const amt = Number(payAmount.replace(/\s+/g, ""));
+    if (!amt || amt <= 0) {
+      showAlert("Montant invalide", "Veuillez saisir un montant valide.");
+      return;
+    }
+    const interest = Math.round(amt * 0.05);
+    const principal = Math.max(0, amt - interest);
+    setLoans((prev) =>
+      prev.map((l) => {
+        if (l.id !== payTarget.id) return l;
+        const nextRem = Math.max(0, l.remainingNum - principal);
+        return {
+          ...l,
+          remainingNum: nextRem,
+          status: nextRem === 0 ? "Remboursé" : l.status,
+        };
+      })
+    );
+    setPayTarget(null);
+    showAlert(
+      "Remboursement enregistré",
+      `Versement : ${amt.toLocaleString("fr-FR")} F\n• Principal : ${principal.toLocaleString("fr-FR")} F\n• Intérêts : ${interest.toLocaleString("fr-FR")} F`
+    );
+  };
+
+  const submitRequest = () => {
+    const amt = Number(reqAmount.replace(/\s+/g, ""));
+    if (!reqLabel.trim() || !amt || amt <= 0) {
+      showAlert("Champs requis", "Veuillez renseigner l'objet et le montant du prêt.");
+      return;
+    }
+    setLoans((prev) => [
+      {
+        id: String(Date.now()),
+        label: reqLabel.trim(),
+        amountNum: amt,
+        remainingNum: amt,
+        nextDate: reqDuration.trim() || "6 mois",
+        status: "Demandé",
+        color: COLORS.warning,
+      },
+      ...prev,
+    ]);
+    setReqLabel("");
+    setReqAmount("");
+    setReqModal(false);
+    showAlert("Demande envoyée", "Votre demande de prêt a été soumise au bureau.");
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -29,7 +99,7 @@ export const PretsScreen = ({ navigation }: any) => {
       <View style={styles.summaryRow}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Encours Total</Text>
-          <Text style={styles.summaryValue}>585 000 F</Text>
+          <Text style={styles.summaryValue}>{totalRemaining.toLocaleString("fr-FR")} F</Text>
         </View>
         <View style={[styles.summaryCard, { backgroundColor: COLORS.secondary + "15" }]}>
           <Text style={[styles.summaryLabel, { color: COLORS.secondary }]}>Capacité Prêt</Text>
@@ -39,44 +109,132 @@ export const PretsScreen = ({ navigation }: any) => {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Mes Prêts</Text>
-        {LOANS.map((loan, i) => (
-          <TouchableOpacity key={i} style={styles.loanItem}>
-            <View style={styles.loanHeader}>
-              <Text style={styles.loanLabel}>{loan.label}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: loan.color + "15" }]}>
-                <Text style={[styles.statusText, { color: loan.color }]}>{loan.status}</Text>
+        {loans.map((loan) => {
+          const pct = loan.amountNum > 0 ? Math.round(((loan.amountNum - loan.remainingNum) / loan.amountNum) * 100) : 0;
+          return (
+            <View key={loan.id} style={styles.loanItem}>
+              <View style={styles.loanHeader}>
+                <Text style={styles.loanLabel}>{loan.label}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: loan.color + "15" }]}>
+                  <Text style={[styles.statusText, { color: loan.color }]}>{loan.status}</Text>
+                </View>
               </View>
-            </View>
-            
-            <View style={styles.loanBody}>
-              <View>
-                <Text style={styles.metaLabel}>Montant Initial</Text>
-                <Text style={styles.metaValue}>{loan.amount}</Text>
+              
+              <View style={styles.loanBody}>
+                <View>
+                  <Text style={styles.metaLabel}>Montant Initial</Text>
+                  <Text style={styles.metaValue}>{loan.amountNum.toLocaleString("fr-FR")} F</Text>
+                </View>
+                <View style={{ alignItems: "flex-end" }}>
+                  <Text style={styles.metaLabel}>Reste à payer</Text>
+                  <Text style={[styles.metaValue, { color: COLORS.danger }]}>{loan.remainingNum.toLocaleString("fr-FR")} F</Text>
+                </View>
               </View>
-              <View style={{ alignItems: "flex-end" }}>
-                <Text style={styles.metaLabel}>Reste à payer</Text>
-                <Text style={[styles.metaValue, { color: COLORS.danger }]}>{loan.remaining}</Text>
-              </View>
-            </View>
 
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: "60%", backgroundColor: loan.color }]} />
-            </View>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: loan.color }]} />
+              </View>
 
-            <View style={styles.loanFooter}>
-              <Text style={styles.nextDate}>Prochaine échéance : {loan.nextDate}</Text>
-              <TouchableOpacity style={styles.payNowBtn}>
-                <Text style={styles.payNowText}>PAYER</Text>
-              </TouchableOpacity>
+              <View style={styles.loanFooter}>
+                <Text style={styles.nextDate}>Échéance : {loan.nextDate}</Text>
+                {loan.remainingNum > 0 && (
+                  <TouchableOpacity
+                    style={styles.payNowBtn}
+                    onPress={() => {
+                      setPayTarget(loan);
+                      setPayAmount(String(Math.min(50000, loan.remainingNum)));
+                    }}
+                  >
+                    <Text style={styles.payNowText}>PAYER</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
-          </TouchableOpacity>
-        ))}
+          );
+        })}
       </View>
 
-      <TouchableOpacity style={styles.requestBtn}>
+      <TouchableOpacity style={styles.requestBtn} onPress={() => setReqModal(true)}>
         <Text style={styles.requestBtnIcon}>💳</Text>
         <Text style={styles.requestBtnText}>DEMANDER UN PRÊT</Text>
       </TouchableOpacity>
+
+      <Modal visible={Boolean(payTarget)} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: 4 }}>
+              Rembourser un prêt
+            </Text>
+            <Text style={{ fontSize: 13, color: COLORS.gray, marginBottom: SPACING.md }}>
+              {payTarget?.label} · Reste : {payTarget?.remainingNum.toLocaleString("fr-FR")} F
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
+              placeholder="Montant (FCFA)"
+              keyboardType="numeric"
+              value={payAmount}
+              onChangeText={setPayAmount}
+            />
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setPayTarget(null)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmRepayment}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: COLORS.white }}>Confirmer</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={reqModal} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.md }}>
+              Solliciter un prêt
+            </Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
+              placeholder="Objet du prêt (ex: Équipement)"
+              value={reqLabel}
+              onChangeText={setReqLabel}
+            />
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
+              placeholder="Montant souhaité (FCFA)"
+              keyboardType="numeric"
+              value={reqAmount}
+              onChangeText={setReqAmount}
+            />
+            <TextInput
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
+              placeholder="Durée (ex: 6 mois)"
+              value={reqDuration}
+              onChangeText={setReqDuration}
+            />
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setReqModal(false)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={submitRequest}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.secondary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: COLORS.white }}>Soumettre</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       
       <View style={{ height: 100 }} />
     </ScrollView>

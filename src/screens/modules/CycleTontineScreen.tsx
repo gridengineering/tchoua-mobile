@@ -119,6 +119,7 @@ function fmt(n: number) {
 export const CycleTontineScreen = ({ navigation, route }: any) => {
   const { colors } = useTheme();
   const actId: string | undefined = route?.params?.activityId;
+  const paramAssocId: string | undefined = route?.params?.associationId;
   const actName: string | undefined = route?.params?.name;
 
   const [loading, setLoading] = useState(true);
@@ -129,7 +130,7 @@ export const CycleTontineScreen = ({ navigation, route }: any) => {
     (async () => {
       setLoading(true);
       try {
-        const assocId = await getSelectedAssociation();
+        const assocId = paramAssocId ?? (await getSelectedAssociation());
         if (assocId && actId) {
           const res = await apiGet<CycleResponse>(
             `/associations/${assocId}/activities/${actId}/cycle`
@@ -151,7 +152,7 @@ export const CycleTontineScreen = ({ navigation, route }: any) => {
     return () => {
       active = false;
     };
-  }, [actId, actName]);
+  }, [actId, paramAssocId, actName]);
 
   const cycleModeLabel =
     CYCLE_MODE_LABELS[(data.activity.cycleMode as CycleMode) ?? "FIXED_SESSIONS"] ??

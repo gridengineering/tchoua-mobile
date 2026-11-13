@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Image,
 } from "react-native";
+import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
 import { COLORS, SHADOW, SPACING } from "./src/theme";
 import { MainTabNavigator } from "./src/navigation/MainTabNavigator";
 import { EpargneScreen } from "./src/screens/modules/EpargneScreen";
@@ -23,6 +24,9 @@ import { GamificationScreen } from "./src/screens/modules/GamificationScreen";
 import { AcademieScreen } from "./src/screens/modules/AcademieScreen";
 import { WalletScreen } from "./src/screens/modules/WalletScreen";
 import { CalendarScreen } from "./src/screens/modules/CalendarScreen";
+import { HistoriqueScreen } from "./src/screens/modules/HistoriqueScreen";
+import { InteretsScreen } from "./src/screens/modules/InteretsScreen";
+import { CycleTontineScreen } from "./src/screens/modules/CycleTontineScreen";
 
 const Stack = createStackNavigator();
 
@@ -130,17 +134,18 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   );
 }
 
-export default function App() {
+function AppShell() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const { colors } = useTheme();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.primary }}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.primary }}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.primary} />
       <NavigationContainer>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           {!loggedIn ? (
             <Stack.Screen name="Login">
-              {(props) => <LoginScreen onLogin={() => setLoggedIn(true)} />}
+              {() => <LoginScreen onLogin={() => setLoggedIn(true)} />}
             </Stack.Screen>
           ) : (
             <>
@@ -154,11 +159,22 @@ export default function App() {
               <Stack.Screen name="academie" component={AcademieScreen} />
               <Stack.Screen name="wallet" component={WalletScreen} />
               <Stack.Screen name="calendar" component={CalendarScreen} />
+              <Stack.Screen name="historique" component={HistoriqueScreen} />
+              <Stack.Screen name="interets" component={InteretsScreen} />
+              <Stack.Screen name="cycle_tontine" component={CycleTontineScreen} />
             </>
           )}
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppShell />
+    </ThemeProvider>
   );
 }
 

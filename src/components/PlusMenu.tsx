@@ -19,6 +19,8 @@ interface PlusMenuProps {
 }
 
 const SECONDARY_MODULES = [
+  { id: "historique", label: "Historique Financier", icon: "📜" },
+  { id: "interets", label: "Intérêts & Dividendes", icon: "✨" },
   { id: "wallet", label: "Portefeuille (Wallet)", icon: "👛" },
   { id: "calendar", label: "Calendrier Financier", icon: "📆" },
   { id: "epargne", label: "Épargne & Investissement", icon: "🏦" },

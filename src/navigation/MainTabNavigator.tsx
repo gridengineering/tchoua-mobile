@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { COLORS, SHADOW } from "../theme";
+import { useTheme } from "../context/ThemeContext";
+import { SHADOW } from "../theme";
 import { PlusMenu } from "../components/PlusMenu";
 
 import { HomeScreen } from "../screens/HomeScreen";
@@ -11,7 +12,7 @@ import { ProfileScreen } from "../screens/ProfileScreen";
 
 const Tab = createBottomTabNavigator();
 
-const CustomTabBarButton = ({ children, onPress }: any) => (
+const CustomTabBarButton = ({ onPress, color }: any) => (
   <TouchableOpacity
     style={{
       top: -20,
@@ -26,18 +27,19 @@ const CustomTabBarButton = ({ children, onPress }: any) => (
         width: 64,
         height: 64,
         borderRadius: 32,
-        backgroundColor: COLORS.secondary,
+        backgroundColor: color,
         justifyContent: "center",
         alignItems: "center",
       }}
     >
-      <Text style={{ fontSize: 30, color: COLORS.white, fontWeight: "bold" }}>+</Text>
+      <Text style={{ fontSize: 30, color: "#ffffff", fontWeight: "bold" }}>+</Text>
     </View>
   </TouchableOpacity>
 );
 
 export const MainTabNavigator = ({ navigation }: any) => {
   const [menuVisible, setMenuVisible] = useState(false);
+  const { colors } = useTheme();
 
   return (
     <>
@@ -50,14 +52,14 @@ export const MainTabNavigator = ({ navigation }: any) => {
             left: 0,
             right: 0,
             elevation: 0,
-            backgroundColor: COLORS.white,
+            backgroundColor: colors.surface,
             height: 80,
             paddingBottom: 20,
             borderTopWidth: 1,
-            borderTopColor: COLORS.lightGray,
+            borderTopColor: colors.lightGray,
           },
-          tabBarActiveTintColor: COLORS.primary,
-          tabBarInactiveTintColor: COLORS.gray,
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: colors.gray,
           headerShown: false,
         }}
       >
@@ -80,7 +82,7 @@ export const MainTabNavigator = ({ navigation }: any) => {
           component={View}
           options={{
             tabBarButton: (props) => (
-              <CustomTabBarButton {...props} onPress={() => setMenuVisible(true)} />
+              <CustomTabBarButton {...props} color={colors.secondary} onPress={() => setMenuVisible(true)} />
             ),
           }}
         />

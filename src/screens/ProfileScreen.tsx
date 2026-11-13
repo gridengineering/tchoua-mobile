@@ -8,20 +8,23 @@ import {
   Image,
   Dimensions,
 } from "react-native";
-import { COLORS, SPACING, SHADOW } from "../theme";
+import { useTheme } from "../context/ThemeContext";
+import { COLORS, MEMBER_THEMES, SPACING, SHADOW } from "../theme";
 
 const { width } = Dimensions.get("window");
 
 export const ProfileScreen = () => {
+  const { themeId, colors, setTheme } = useTheme();
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+      <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={styles.profileInfo}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>M</Text>
+              <Text style={[styles.avatarText, { color: colors.primary }]}>M</Text>
             </View>
-            <TouchableOpacity style={styles.editBadge}>
+            <TouchableOpacity style={[styles.editBadge, { backgroundColor: colors.secondary }]}>
               <Text style={{ fontSize: 12 }}>📷</Text>
             </TouchableOpacity>
           </View>
@@ -36,17 +39,51 @@ export const ProfileScreen = () => {
       <View style={styles.content}>
         {/* Stats Row */}
         <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>850</Text>
-            <Text style={styles.statLabel}>Points</Text>
+          <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>850</Text>
+            <Text style={[styles.statLabel, { color: colors.gray }]}>Points</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>12</Text>
-            <Text style={styles.statLabel}>Badges</Text>
+          <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>12</Text>
+            <Text style={[styles.statLabel, { color: colors.gray }]}>Badges</Text>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>98%</Text>
-            <Text style={styles.statLabel}>Fiabilité</Text>
+          <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.statValue, { color: colors.primary }]}>98%</Text>
+            <Text style={[styles.statLabel, { color: colors.gray }]}>Fiabilité</Text>
+          </View>
+        </View>
+
+        {/* Theme Selector */}
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Thème d&apos;apparence</Text>
+          <View style={styles.themesGrid}>
+            {MEMBER_THEMES.map((th) => {
+              const active = themeId === th.id;
+              return (
+                <TouchableOpacity
+                  key={th.id}
+                  onPress={() => setTheme(th.id)}
+                  style={[
+                    styles.themeCard,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: active ? colors.secondary : colors.lightGray,
+                      borderWidth: active ? 2 : 1,
+                    },
+                  ]}
+                >
+                  <View style={styles.swatchRow}>
+                    {th.swatches.map((hex, idx) => (
+                      <View key={idx} style={[styles.swatchDot, { backgroundColor: hex }]} />
+                    ))}
+                  </View>
+                  <Text style={[styles.themeName, { color: colors.text }]}>{th.name}</Text>
+                  <Text style={[styles.themeTag, { color: colors.gray }]} numberOfLines={1}>
+                    {th.tagline}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -334,5 +371,36 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 13,
     letterSpacing: 1,
+  },
+  themesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: SPACING.sm,
+  },
+  themeCard: {
+    width: (width - SPACING.lg * 2 - SPACING.sm * 2) / 3,
+    borderRadius: 14,
+    padding: SPACING.sm,
+    ...SHADOW.sm,
+  },
+  swatchRow: {
+    flexDirection: "row",
+    gap: 4,
+    marginBottom: 6,
+  },
+  swatchDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.1)",
+  },
+  themeName: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  themeTag: {
+    fontSize: 10,
+    marginTop: 1,
   },
 });

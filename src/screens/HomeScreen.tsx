@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,29 +7,53 @@ import {
   TouchableOpacity,
   Dimensions,
 } from "react-native";
+import { setSelectedAssociation } from "../api/client";
+import { useTheme } from "../context/ThemeContext";
 import { COLORS, SPACING, SHADOW } from "../theme";
+import { ASSOC_TYPE_META, AssociationSummary, getMemberCount } from "../types/association";
 
 const { width } = Dimensions.get("window");
 
-export const HomeScreen = () => {
+const DEMO_ASSOCIATIONS: AssociationSummary[] = [
+  { id: "amsed", name: "AMSED", type: "SECTION", _count: { memberships: 42 } },
+  { id: "ameibans", name: "AMEIBANS", type: "AMICALE", _count: { memberships: 120 } },
+  { id: "ndi-mbe", name: "Fonds NDI MBE", type: "FEDERATION", _count: { memberships: 18 } },
+  { id: "a30", name: "Association A30", type: "TONTINE_CLUB", _count: { memberships: 30 } },
+];
+
+export const HomeScreen = ({ navigation }: any) => {
+  const { colors } = useTheme();
+  const [selectedAssoc, setSelectedAssoc] = useState<string>("all");
+
   const KPIS = [
-    { label: "Mes Tontines", value: "3", icon: "💰", color: COLORS.primary },
-    { label: "Épargne Totale", value: "145k F", icon: "🏦", color: COLORS.secondary },
-    { label: "Prêts Actifs", value: "1", icon: "🤝", color: COLORS.terracotta },
-    { label: "Score Réput.", value: "850", icon: "🏆", color: COLORS.info },
+    { label: "Mes Tontines", value: "3", icon: "💰", color: colors.primary },
+    { label: "Épargne Totale", value: "145k F", icon: "🏦", color: colors.secondary },
+    { label: "Prêts Actifs", value: "1", icon: "🤝", color: colors.terracotta },
+    { label: "Score Réput.", value: "850", icon: "🏆", color: colors.info },
   ];
 
+  const handleSelectAssoc = (id: string) => {
+    setSelectedAssoc(id);
+    setSelectedAssociation(id === "all" ? null : id).catch(() => {});
+  };
+
+  const activeAssoc = DEMO_ASSOCIATIONS.find((a) => a.id === selectedAssoc);
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
       {/* Header with Association Selector */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={styles.topRow}>
           <View>
             <Text style={styles.welcome}>Bonjour, Marie 👋</Text>
-            <Text style={styles.status}>Membre Premium · Yaoundé</Text>
+            <Text style={styles.status}>
+              {activeAssoc
+                ? `${ASSOC_TYPE_META[activeAssoc.type].icon} ${ASSOC_TYPE_META[activeAssoc.type].label} · ${getMemberCount(activeAssoc)} membres`
+                : "Membre Premium · Yaoundé"}
+            </Text>
           </View>
           <TouchableOpacity style={styles.avatar}>
-            <Text style={styles.avatarText}>M</Text>
+            <Text style={[styles.avatarText, { color: colors.primary }]}>M</Text>
           </TouchableOpacity>
         </View>
 
@@ -39,30 +63,41 @@ export const HomeScreen = () => {
           style={styles.assocSelector}
           contentContainerStyle={styles.assocContent}
         >
-          <TouchableOpacity style={[styles.assocBadge, styles.assocBadgeActive]}>
-            <Text style={[styles.assocText, styles.assocTextActive]}>Toutes</Text>
+          <TouchableOpacity
+            onPress={() => handleSelectAssoc("all")}
+            style={[styles.assocBadge, selectedAssoc === "all" && styles.assocBadgeActive]}
+          >
+            <Text style={[styles.assocText, selectedAssoc === "all" && { color: colors.primary, fontWeight: "900" }]}>
+              Toutes
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.assocBadge}>
-            <Text style={styles.assocText}>AMSED</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.assocBadge}>
-            <Text style={styles.assocText}>Fonds NDI MBE</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.assocBadge}>
-            <Text style={styles.assocText}>Association A30</Text>
-          </TouchableOpacity>
+          {DEMO_ASSOCIATIONS.map((a) => {
+            const active = selectedAssoc === a.id;
+            const meta = ASSOC_TYPE_META[a.type];
+            return (
+              <TouchableOpacity
+                key={a.id}
+                onPress={() => handleSelectAssoc(a.id)}
+                style={[styles.assocBadge, active && styles.assocBadgeActive]}
+              >
+                <Text style={[styles.assocText, active && { color: colors.primary, fontWeight: "900" }]}>
+                  {meta.icon} {a.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
       {/* KPI Grid */}
       <View style={styles.grid}>
         {KPIS.map((kpi, i) => (
-          <View key={i} style={styles.kpiCard}>
+          <View key={i} style={[styles.kpiCard, { backgroundColor: colors.surface }]}>
             <View style={[styles.iconBox, { backgroundColor: kpi.color + "15" }]}>
               <Text style={styles.kpiIcon}>{kpi.icon}</Text>
             </View>
-            <Text style={styles.kpiValue}>{kpi.value}</Text>
-            <Text style={styles.kpiLabel}>{kpi.label}</Text>
+            <Text style={[styles.kpiValue, { color: colors.text }]}>{kpi.value}</Text>
+            <Text style={[styles.kpiLabel, { color: colors.gray }]}>{kpi.label}</Text>
           </View>
         ))}
       </View>
@@ -70,22 +105,25 @@ export const HomeScreen = () => {
       {/* Next Session Card */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Prochaine Réunion</Text>
-          <TouchableOpacity>
-            <Text style={styles.seeAll}>Voir calendrier</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Prochaine Réunion</Text>
+          <TouchableOpacity onPress={() => navigation?.navigate?.("calendar")}>
+            <Text style={[styles.seeAll, { color: colors.secondary }]}>Voir calendrier</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.sessionCard}>
-          <View style={styles.sessionDate}>
-            <Text style={styles.dateDay}>15</Text>
-            <Text style={styles.dateMonth}>MAI</Text>
+        <TouchableOpacity
+          style={[styles.sessionCard, { backgroundColor: colors.surface }]}
+          onPress={() => navigation?.navigate?.("sessions")}
+        >
+          <View style={[styles.sessionDate, { backgroundColor: colors.primary + "12" }]}>
+            <Text style={[styles.dateDay, { color: colors.primary }]}>15</Text>
+            <Text style={[styles.dateMonth, { color: colors.primary }]}>MAI</Text>
           </View>
           <View style={styles.sessionInfo}>
-            <Text style={styles.sessionTitleText}>AG Mensuelle - AMSED</Text>
-            <Text style={styles.sessionLocation}>📍 Foyer Bandjoun, Yaoundé</Text>
-            <Text style={styles.sessionTime}>🕒 15:00 — 19:00</Text>
+            <Text style={[styles.sessionTitleText, { color: colors.text }]}>AG Mensuelle - AMSED</Text>
+            <Text style={[styles.sessionLocation, { color: colors.gray }]}>📍 Foyer Bandjoun, Yaoundé</Text>
+            <Text style={[styles.sessionTime, { color: colors.primary }]}>🕒 15:00 — 19:00</Text>
           </View>
-          <View style={styles.countdown}>
+          <View style={[styles.countdown, { backgroundColor: colors.secondary }]}>
             <Text style={styles.countdownValue}>J-7</Text>
           </View>
         </TouchableOpacity>
@@ -93,24 +131,39 @@ export const HomeScreen = () => {
 
       {/* Recent Activity */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Activités Récentes</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Activités Récentes</Text>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <TouchableOpacity onPress={() => navigation?.navigate?.("interets")}>
+              <Text style={[styles.seeAll, { color: colors.primary }]}>Intérêts</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation?.navigate?.("historique")}>
+              <Text style={[styles.seeAll, { color: colors.secondary }]}>Historique</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
         {[
           { t: "Cotisation Tontine A", a: "+25 000 F", d: "Hier, 18:30", i: "💸" },
-          { t: "Remboursement Prêt", a: "-10 000 F", d: "2 mai 2026", i: "💳" },
+          { t: "Remboursement principal", a: "+50 000 F", d: "10 mai 2026", i: "🏦" },
+          { t: "Part d'intérêts — prêt", a: "+2 250 F", d: "10 mai 2026", i: "✨" },
           { t: "Aide Solidarité (Naiss.)", a: "+50 000 F", d: "28 avr. 2026", i: "👶" },
         ].map((item, i) => (
-          <View key={i} style={styles.activityItem}>
-            <View style={styles.activityIcon}>
+          <TouchableOpacity
+            key={i}
+            style={[styles.activityItem, { backgroundColor: colors.surface }]}
+            onPress={() => navigation?.navigate?.("historique")}
+          >
+            <View style={[styles.activityIcon, { backgroundColor: colors.background }]}>
               <Text style={{ fontSize: 18 }}>{item.i}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.activityTitle}>{item.t}</Text>
-              <Text style={styles.activityDate}>{item.d}</Text>
+              <Text style={[styles.activityTitle, { color: colors.text }]}>{item.t}</Text>
+              <Text style={[styles.activityDate, { color: colors.gray }]}>{item.d}</Text>
             </View>
-            <Text style={[styles.activityAmount, { color: item.a.includes("+") ? COLORS.success : COLORS.danger }]}>
+            <Text style={[styles.activityAmount, { color: item.a.includes("+") ? colors.success : colors.danger }]}>
               {item.a}
             </Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
       

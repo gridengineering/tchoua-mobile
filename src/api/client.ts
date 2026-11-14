@@ -12,7 +12,7 @@ export async function initBaseUrl(): Promise<string> {
 
 export function setBaseUrl(url: string) {
   BASE_URL = url.replace(/\/+$/, "");
-  AsyncStorage.setItem("api_base_url", BASE_URL).catch(() => {});
+  AsyncStorage.setItem("api_base_url", BASE_URL).catch(() => { });
 }
 
 export function getBaseUrl(): string {
@@ -67,7 +67,7 @@ export async function apiOnline<T>(
     throw new ApiError(
       response.status,
       (data.error || `Erreur ${response.status}`) +
-        (Array.isArray(data.missing) ? ` : ${data.missing.join(", ")}` : "")
+      (Array.isArray(data.missing) ? ` : ${data.missing.join(", ")}` : "")
     );
   }
   return data as T;
@@ -92,7 +92,7 @@ export async function apiGet<T>(
     });
     if (!res.ok) throw new ApiError(res.status, `API error ${res.status}`);
     const data = (await res.json()) as T;
-    cacheSet(cacheKey, data, opts.cacheTtlMs).catch(() => {});
+    cacheSet(cacheKey, data, opts.cacheTtlMs).catch(() => { });
     return data as T & { __cached?: boolean };
   } catch (err) {
     if (err instanceof ApiError) throw err;
@@ -307,4 +307,59 @@ export async function getSelectedAssociation(): Promise<string | null> {
 export async function setSelectedAssociation(id: string | null): Promise<void> {
   if (id) await AsyncStorage.setItem("selected_association_id", id);
   else await AsyncStorage.removeItem("selected_association_id");
+}
+
+export const RTC_ENDPOINTS = {
+  jitsiUrl: "https://meet.tchoua.com",
+  chatWsUrl: "wss://chat.tchoua.com/connection/websocket",
+  turnServers: ["turn:turn.tchoua.com:3478", "turns:turn.tchoua.com:5349"],
+};
+
+export async function getAuthHeaders(): Promise<Record<string, string>> {
+  return authHeader();
+}
+
+export function resolveWebUrl(path: string): string {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  const origin = BASE_URL.replace(/\/api$/, "");
+  return `${origin}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+export async function uploadChatFile(
+  associationId: string,
+  file: { uri: string; name: string; type: string }
+): Promise<{ url: string; name: string; mimeType: string; size: number; isImage: boolean }> {
+  const auth = await authHeader();
+  const form = new FormData();
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.type,
+  } as any);
+
+  const res = await fetch(`${BASE_URL}/associations/${associationId}/messages/upload`, {
+    method: "POST",
+    credentials: "include",
+    headers: { ...auth },
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new ApiError(res.status, data?.error || `Échec de l'envoi du fichier (${res.status})`);
+  }
+  return data;
+}
+
+export async function getRtcChatToken(
+  associationId: string
+): Promise<{ token: string; channels: string[]; wsUrl: string }> {
+  return apiOnline(`/rtc/chat-token`, { associationId }, "POST");
+}
+
+export async function getRtcJitsiToken(
+  associationId: string,
+  meetingId?: string
+): Promise<{ token: string; room: string; moderator: boolean; url: string }> {
+  return apiOnline(`/rtc/jitsi-token`, { associationId, ...(meetingId ? { meetingId } : {}) }, "POST");
 }

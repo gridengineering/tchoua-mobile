@@ -44,6 +44,7 @@ export const MainTabNavigator = ({ navigation }: any) => {
   return (
     <>
       <Tab.Navigator
+        initialRouteName="Chat"
         screenOptions={{
           tabBarShowLabel: true,
           tabBarStyle: {
@@ -90,6 +91,7 @@ export const MainTabNavigator = ({ navigation }: any) => {
           name="Chat"
           component={ChatScreen}
           options={{
+            tabBarLabel: "Discussions",
             tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>💬</Text>,
           }}
         />

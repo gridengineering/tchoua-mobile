@@ -119,6 +119,35 @@ export const ChatScreen = () => {
   const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
   const [infoVisible, setInfoVisible] = useState(false);
   const [joiningCall, setJoiningCall] = useState(false);
+  const [assocWallet, setAssocWallet] = useState<{ balance: number; currency: string } | null>(null);
+  const [founderInfo, setFounderInfo] = useState<{
+    founder?: { name: string } | null;
+    request?: { proposedByName: string } | null;
+    canConfirm?: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!infoVisible || room?.kind !== "association") return;
+    const assocId = room.assoc.id;
+    Promise.allSettled([
+      apiGet<any>(`/associations/${assocId}/wallet`),
+      apiGet<any>(`/associations/${assocId}/founder-revocation`),
+    ]).then(([wRes, fRes]) => {
+      if (wRes.status === "fulfilled" && wRes.value?.wallet) {
+        setAssocWallet({
+          balance: Number(wRes.value.wallet.balance ?? 0),
+          currency: String(wRes.value.wallet.currency || "FCFA"),
+        });
+      } else {
+        setAssocWallet(null);
+      }
+      if (fRes.status === "fulfilled" && fRes.value) {
+        setFounderInfo(fRes.value);
+      } else {
+        setFounderInfo(null);
+      }
+    });
+  }, [infoVisible, room]);
 
   const scrollRef = useRef<ScrollView>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -898,6 +927,26 @@ export const ChatScreen = () => {
                 <Text style={{ color: colors.gray, fontSize: 11, textAlign: "center", marginTop: 10 }}>
                   Jitsi: meet.tchoua.com · Chat WS: chat.tchoua.com · TURN: turn.tchoua.com:3478/5349
                 </Text>
+
+                {(assocWallet || founderInfo?.founder) && (
+                  <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.lightGray, gap: 6 }}>
+                    {assocWallet && (
+                      <Text style={{ color: colors.text, fontSize: 13, fontWeight: "700", textAlign: "center" }}>
+                        🏦 Caisse Association : {assocWallet.balance.toLocaleString("fr-FR")} {assocWallet.currency}
+                      </Text>
+                    )}
+                    {founderInfo?.founder && (
+                      <Text style={{ color: colors.gray, fontSize: 12, textAlign: "center" }}>
+                        🛡️ Fondateur protégé : {founderInfo.founder.name}
+                      </Text>
+                    )}
+                    {founderInfo?.request && (
+                      <Text style={{ color: colors.danger, fontSize: 12, fontWeight: "700", textAlign: "center" }}>
+                        ⚠️ Révocation proposée par {founderInfo.request.proposedByName} (en attente de confirmation)
+                      </Text>
+                    )}
+                  </View>
+                )}
               </View>
 
               <Text style={[styles.sectionHeader, { color: colors.gray, paddingHorizontal: 0 }]}>

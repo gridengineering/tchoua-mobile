@@ -1,28 +1,65 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { apiGet, apiPatch, getSelectedAssociation } from "../../api/client";
 import { useTheme } from "../../context/ThemeContext";
 import { SHADOW, SPACING } from "../../theme";
 import { showAlert } from "../../utils/feedback";
 
-const INITIAL_MEMBERS = [
-  { id: "1", name: "Marie Ngono", role: "Présidente", score: 98, status: "Actif", phone: "+237 699 00 11 22" },
-  { id: "2", name: "Jean Mbarga", role: "Trésorier", score: 95, status: "Actif", phone: "+237 677 22 33 44" },
-  { id: "3", name: "Pauline Fotso", role: "Secrétaire", score: 94, status: "Actif", phone: "+237 655 44 55 66" },
-  { id: "4", name: "Samuel Kamdem", role: "Membre", score: 89, status: "Actif", phone: "+237 690 77 88 99" },
-  { id: "5", name: "Clarisse Tchinda", role: "Membre", score: 92, status: "En attente", phone: "+237 670 12 34 56" },
-];
+type MemberItem = {
+  id: string;
+  name: string;
+  role: string;
+  score: number;
+  status: string;
+  phone: string;
+};
 
 export const MembresScreen = ({ navigation }: any) => {
   const { colors } = useTheme();
   const [query, setQuery] = useState("");
-  const [members, setMembers] = useState(INITIAL_MEMBERS);
+  const [members, setMembers] = useState<MemberItem[]>([]);
+  const [assocId, setAssocId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadMembers = useCallback(async () => {
+    try {
+      const selectedId = await getSelectedAssociation();
+      if (!selectedId) {
+        setMembers([]);
+        return;
+      }
+      setAssocId(selectedId);
+      const res = await apiGet<{ members: any[] }>(`/associations/${selectedId}/members`);
+      const mapped: MemberItem[] = (res.members ?? []).map((m) => ({
+        id: m.id,
+        name: m.user?.name || m.user?.email || "Membre",
+        role: m.customRole?.name || m.role || "MEMBER",
+        score: Math.round(m.reliabilityScore ?? 100),
+        status: m.status === "PENDING" ? "En attente" : m.status === "ACTIVE" ? "Actif" : m.status,
+        phone: m.user?.phone || "Non renseigné",
+      }));
+      setMembers(mapped);
+    } catch {
+      // Keep cached/empty list silently on offline error
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
 
   const filtered = members.filter(
     (m) =>
@@ -30,15 +67,30 @@ export const MembresScreen = ({ navigation }: any) => {
       m.role.toLowerCase().includes(query.toLowerCase())
   );
 
-  const approveMember = (id: string) => {
-    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, status: "Actif" } : m)));
-    showAlert("Membre validé", "Le membre est maintenant actif dans l'association.");
+  const approveMember = async (id: string) => {
+    if (!assocId) return;
+    try {
+      await apiPatch(`/associations/${assocId}/members/${id}`, { status: "ACTIVE" });
+      setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, status: "Actif" } : m)));
+      showAlert("Membre validé", "Le membre est maintenant actif dans l'association.");
+    } catch (err: any) {
+      showAlert("Erreur", err?.message || "Impossible de valider ce membre.");
+    }
   };
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            loadMembers();
+          }}
+        />
+      }
     >
       <View
         style={[
@@ -65,38 +117,46 @@ export const MembresScreen = ({ navigation }: any) => {
         />
       </View>
 
-      <View style={styles.list}>
-        {filtered.map((m) => (
-          <View key={m.id} style={[styles.card, { backgroundColor: colors.surface }]}>
-            <View style={[styles.avatar, { backgroundColor: colors.primary + "15" }]}>
-              <Text style={[styles.avatarText, { color: colors.primary }]}>
-                {m.name.charAt(0)}
-              </Text>
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 32 }} />
+      ) : filtered.length === 0 ? (
+        <Text style={[styles.empty, { color: colors.gray }]}>
+          Aucun membre trouvé pour cette association.
+        </Text>
+      ) : (
+        <View style={styles.list}>
+          {filtered.map((m) => (
+            <View key={m.id} style={[styles.card, { backgroundColor: colors.surface }]}>
+              <View style={[styles.avatar, { backgroundColor: colors.primary + "15" }]}>
+                <Text style={[styles.avatarText, { color: colors.primary }]}>
+                  {m.name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.name, { color: colors.text }]}>{m.name}</Text>
+                <Text style={[styles.meta, { color: colors.gray }]}>
+                  {m.role} · Fiabilité {m.score}%
+                </Text>
+              </View>
+              {m.status === "En attente" ? (
+                <TouchableOpacity
+                  onPress={() => approveMember(m.id)}
+                  style={[styles.badgeBtn, { backgroundColor: colors.secondary }]}
+                >
+                  <Text style={styles.badgeBtnText}>Valider</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => showAlert(m.name, `Téléphone : ${m.phone}\nRôle : ${m.role}`)}
+                  style={[styles.badgeBtn, { backgroundColor: colors.primary + "12" }]}
+                >
+                  <Text style={[styles.badgeBtnText, { color: colors.primary }]}>Contacter</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.name, { color: colors.text }]}>{m.name}</Text>
-              <Text style={[styles.meta, { color: colors.gray }]}>
-                {m.role} · Fiabilité {m.score}%
-              </Text>
-            </View>
-            {m.status === "En attente" ? (
-              <TouchableOpacity
-                onPress={() => approveMember(m.id)}
-                style={[styles.badgeBtn, { backgroundColor: colors.secondary }]}
-              >
-                <Text style={styles.badgeBtnText}>Valider</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                onPress={() => showAlert(m.name, `Téléphone : ${m.phone}\nRôle : ${m.role}`)}
-                style={[styles.badgeBtn, { backgroundColor: colors.primary + "12" }]}
-              >
-                <Text style={[styles.badgeBtnText, { color: colors.primary }]}>Contacter</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      )}
       <View style={{ height: 80 }} />
     </ScrollView>
   );
@@ -121,6 +181,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
+  empty: { textAlign: "center", marginTop: 32, fontSize: 14 },
   list: { paddingHorizontal: SPACING.lg },
   card: {
     flexDirection: "row",

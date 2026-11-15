@@ -1,32 +1,41 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
-  Modal,
+  Text,
   TextInput,
-  Dimensions,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { COLORS, SPACING, SHADOW } from "../../theme";
+import { apiGet, apiPost, getSelectedAssociation } from "../../api/client";
+import { COLORS, SHADOW, SPACING } from "../../theme";
 import { showAlert } from "../../utils/feedback";
 
-const { width } = Dimensions.get("window");
-
-const INITIAL_LOANS = [
-  { id: "1", label: "Prêt Scolaire", amountNum: 200000, remainingNum: 85000, nextDate: "15 Mai", status: "En cours", color: COLORS.success },
-  { id: "2", label: "Besoin Fond de Roulement", amountNum: 500000, remainingNum: 500000, nextDate: "Juin 2026", status: "Accordé", color: COLORS.info },
-];
+type LoanItem = {
+  id: string;
+  label: string;
+  amountNum: number;
+  remainingNum: number;
+  nextDate: string;
+  status: string;
+  color: string;
+};
 
 export const PretsScreen = ({ navigation, route }: any) => {
-  const [loans, setLoans] = useState(INITIAL_LOANS);
-  const [payTarget, setPayTarget] = useState<(typeof INITIAL_LOANS)[0] | null>(null);
+  const [assocId, setAssocId] = useState<string | null>(null);
+  const [activityId, setActivityId] = useState<string | null>(null);
+  const [loans, setLoans] = useState<LoanItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [payTarget, setPayTarget] = useState<LoanItem | null>(null);
   const [payAmount, setPayAmount] = useState("25000");
   const [reqModal, setReqModal] = useState(false);
   const [reqLabel, setReqLabel] = useState("");
   const [reqAmount, setReqAmount] = useState("");
-  const [reqDuration, setReqDuration] = useState("6 mois");
+  const [reqDuration, setReqDuration] = useState("6");
 
   useEffect(() => {
     if (route?.params?.openLoanModal) {
@@ -34,159 +43,173 @@ export const PretsScreen = ({ navigation, route }: any) => {
     }
   }, [route?.params?.openLoanModal]);
 
+  const loadLoans = useCallback(async () => {
+    try {
+      const selectedId = await getSelectedAssociation();
+      if (!selectedId) {
+        setLoans([]);
+        return;
+      }
+      setAssocId(selectedId);
+      const [loansRes, actRes] = await Promise.all([
+        apiGet<{ loans?: any[] }>(`/associations/${selectedId}/loans`).catch(() => ({ loans: [] })),
+        apiGet<{ activities?: any[] }>(`/associations/${selectedId}/activities`).catch(() => ({ activities: [] })),
+      ]);
+
+      const creditAct = (actRes.activities ?? []).find((a) =>
+        ["PRET", "INVESTISSEMENT", "EPARGNE"].includes(String(a.type))
+      );
+      if (creditAct) setActivityId(creditAct.id);
+
+      const mapped: LoanItem[] = (loansRes.loans ?? []).map((l) => {
+        const repaid = (l.repayments ?? []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+        const rem = Math.max(0, Number(l.totalDue ?? l.amount) - repaid);
+        return {
+          id: l.id,
+          label: l.purpose || l.activity?.name || "Prêt associatif",
+          amountNum: Number(l.amount || 0),
+          remainingNum: rem,
+          nextDate: l.dueDate
+            ? new Date(l.dueDate).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })
+            : "À définir",
+          status: l.status,
+          color: l.status === "ACTIVE" ? COLORS.success : l.status === "REPAID" ? COLORS.gray : COLORS.info,
+        };
+      });
+      setLoans(mapped);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadLoans();
+  }, [loadLoans]);
+
   const totalRemaining = loans.reduce((s, l) => s + l.remainingNum, 0);
 
-  const confirmRepayment = () => {
+  const confirmRepayment = async () => {
     if (!payTarget) return;
     const amt = Number(payAmount.replace(/\s+/g, ""));
     if (!amt || amt <= 0) {
       showAlert("Montant invalide", "Veuillez saisir un montant valide.");
       return;
     }
-    const interest = Math.round(amt * 0.05);
-    const principal = Math.max(0, amt - interest);
-    setLoans((prev) =>
-      prev.map((l) => {
-        if (l.id !== payTarget.id) return l;
-        const nextRem = Math.max(0, l.remainingNum - principal);
-        return {
-          ...l,
-          remainingNum: nextRem,
-          status: nextRem === 0 ? "Remboursé" : l.status,
-        };
-      })
-    );
-    setPayTarget(null);
-    showAlert(
-      "Remboursement enregistré",
-      `Versement : ${amt.toLocaleString("fr-FR")} F\n• Principal : ${principal.toLocaleString("fr-FR")} F\n• Intérêts : ${interest.toLocaleString("fr-FR")} F`
-    );
+    try {
+      await apiPost(`/loans/${payTarget.id}/repayment`, { amount: amt, paymentMethod: "MOBILE_MONEY" });
+      setPayTarget(null);
+      showAlert("Remboursement enregistré", `${amt.toLocaleString("fr-FR")} F crédités sur le prêt.`);
+      loadLoans();
+    } catch (err: any) {
+      showAlert("Erreur", err?.message || "Impossible d'enregistrer le remboursement.");
+    }
   };
 
-  const submitRequest = () => {
+  const submitLoanRequest = async () => {
     const amt = Number(reqAmount.replace(/\s+/g, ""));
-    if (!reqLabel.trim() || !amt || amt <= 0) {
-      showAlert("Champs requis", "Veuillez renseigner l'objet et le montant du prêt.");
+    const duration = Number(reqDuration) || 6;
+    if (!assocId || !activityId || !amt || amt <= 0) {
+      showAlert("Données requises", "Sélectionnez une association avec activité de prêt et un montant valide.");
       return;
     }
-    setLoans((prev) => [
-      {
-        id: String(Date.now()),
-        label: reqLabel.trim(),
-        amountNum: amt,
-        remainingNum: amt,
-        nextDate: reqDuration.trim() || "6 mois",
-        status: "Demandé",
-        color: COLORS.warning,
-      },
-      ...prev,
-    ]);
-    setReqLabel("");
-    setReqAmount("");
-    setReqModal(false);
-    showAlert("Demande envoyée", "Votre demande de prêt a été soumise au bureau.");
+    try {
+      await apiPost(`/associations/${assocId}/loans`, {
+        activityId,
+        amount: amt,
+        duration,
+        purpose: reqLabel.trim() || "Demande de prêt mobile",
+      });
+      setReqModal(false);
+      setReqLabel("");
+      setReqAmount("");
+      showAlert("Demande transmise", "Votre demande de prêt a été enregistrée.");
+      loadLoans();
+    } catch (err: any) {
+      showAlert("Refus / Erreur", err?.message || "Impossible de soumettre la demande de prêt.");
+    }
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            loadLoans();
+          }}
+        />
+      }
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backText}>‹ Retour</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Prêts & Crédit</Text>
+        <Text style={styles.title}>Prêts & Crédits</Text>
       </View>
 
-      <View style={styles.summaryRow}>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Encours Total</Text>
-          <Text style={styles.summaryValue}>{totalRemaining.toLocaleString("fr-FR")} F</Text>
-        </View>
-        <View style={[styles.summaryCard, { backgroundColor: COLORS.secondary + "15" }]}>
-          <Text style={[styles.summaryLabel, { color: COLORS.secondary }]}>Capacité Prêt</Text>
-          <Text style={[styles.summaryValue, { color: COLORS.secondary }]}>1.2M F</Text>
-        </View>
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryLabel}>Encours total restant</Text>
+        <Text style={styles.summaryVal}>{totalRemaining.toLocaleString("fr-FR")} FCFA</Text>
+        <TouchableOpacity style={styles.reqBtn} onPress={() => setReqModal(true)}>
+          <Text style={styles.reqBtnText}>+ Demander un prêt</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Mes Prêts</Text>
-        {loans.map((loan) => {
-          const pct = loan.amountNum > 0 ? Math.round(((loan.amountNum - loan.remainingNum) / loan.amountNum) * 100) : 0;
-          return (
-            <View key={loan.id} style={styles.loanItem}>
-              <View style={styles.loanHeader}>
-                <Text style={styles.loanLabel}>{loan.label}</Text>
-                <View style={[styles.statusBadge, { backgroundColor: loan.color + "15" }]}>
-                  <Text style={[styles.statusText, { color: loan.color }]}>{loan.status}</Text>
-                </View>
+        <Text style={styles.sectionTitle}>Mes Prêts ({loans.length})</Text>
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
+        ) : loans.length === 0 ? (
+          <Text style={styles.empty}>Aucun prêt enregistré pour cette association.</Text>
+        ) : (
+          loans.map((l) => (
+            <View key={l.id} style={styles.loanCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.loanTitle}>{l.label}</Text>
+                <Text style={styles.loanMeta}>
+                  Initial : {l.amountNum.toLocaleString("fr-FR")} F · Échéance : {l.nextDate}
+                </Text>
+                <Text style={[styles.loanRem, { color: l.color }]}>
+                  Reste : {l.remainingNum.toLocaleString("fr-FR")} F ({l.status})
+                </Text>
               </View>
-              
-              <View style={styles.loanBody}>
-                <View>
-                  <Text style={styles.metaLabel}>Montant Initial</Text>
-                  <Text style={styles.metaValue}>{loan.amountNum.toLocaleString("fr-FR")} F</Text>
-                </View>
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.metaLabel}>Reste à payer</Text>
-                  <Text style={[styles.metaValue, { color: COLORS.danger }]}>{loan.remainingNum.toLocaleString("fr-FR")} F</Text>
-                </View>
-              </View>
-
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: loan.color }]} />
-              </View>
-
-              <View style={styles.loanFooter}>
-                <Text style={styles.nextDate}>Échéance : {loan.nextDate}</Text>
-                {loan.remainingNum > 0 && (
-                  <TouchableOpacity
-                    style={styles.payNowBtn}
-                    onPress={() => {
-                      setPayTarget(loan);
-                      setPayAmount(String(Math.min(50000, loan.remainingNum)));
-                    }}
-                  >
-                    <Text style={styles.payNowText}>PAYER</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
+              {l.remainingNum > 0 && (
+                <TouchableOpacity
+                  style={styles.payBtn}
+                  onPress={() => {
+                    setPayTarget(l);
+                    setPayAmount(String(Math.min(25000, l.remainingNum)));
+                  }}
+                >
+                  <Text style={styles.payBtnText}>Payer</Text>
+                </TouchableOpacity>
+              )}
             </View>
-          );
-        })}
+          ))
+        )}
       </View>
 
-      <TouchableOpacity style={styles.requestBtn} onPress={() => setReqModal(true)}>
-        <Text style={styles.requestBtnIcon}>💳</Text>
-        <Text style={styles.requestBtnText}>DEMANDER UN PRÊT</Text>
-      </TouchableOpacity>
-
       <Modal visible={Boolean(payTarget)} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
-          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
-            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: 4 }}>
-              Rembourser un prêt
-            </Text>
-            <Text style={{ fontSize: 13, color: COLORS.gray, marginBottom: SPACING.md }}>
-              {payTarget?.label} · Reste : {payTarget?.remainingNum.toLocaleString("fr-FR")} F
-            </Text>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Rembourser : {payTarget?.label}</Text>
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
-              placeholder="Montant (FCFA)"
+              style={styles.input}
               keyboardType="numeric"
               value={payAmount}
               onChangeText={setPayAmount}
+              placeholder="Montant (FCFA)"
             />
-            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
-              <TouchableOpacity
-                onPress={() => setPayTarget(null)}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setPayTarget(null)} style={styles.cancelBtn}>
+                <Text style={styles.cancelText}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={confirmRepayment}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "800", color: COLORS.white }}>Confirmer</Text>
+              <TouchableOpacity onPress={confirmRepayment} style={styles.confirmBtn}>
+                <Text style={styles.confirmText}>Confirmer</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -194,207 +217,126 @@ export const PretsScreen = ({ navigation, route }: any) => {
       </Modal>
 
       <Modal visible={reqModal} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
-          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
-            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.md }}>
-              Solliciter un prêt
-            </Text>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Nouvelle demande de prêt</Text>
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
-              placeholder="Objet du prêt (ex: Équipement)"
+              style={styles.input}
               value={reqLabel}
               onChangeText={setReqLabel}
+              placeholder="Objet du prêt"
             />
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
-              placeholder="Montant souhaité (FCFA)"
+              style={styles.input}
               keyboardType="numeric"
               value={reqAmount}
               onChangeText={setReqAmount}
+              placeholder="Montant (FCFA)"
             />
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
-              placeholder="Durée (ex: 6 mois)"
+              style={styles.input}
+              keyboardType="numeric"
               value={reqDuration}
               onChangeText={setReqDuration}
+              placeholder="Durée (mois)"
             />
-            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
-              <TouchableOpacity
-                onPress={() => setReqModal(false)}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setReqModal(false)} style={styles.cancelBtn}>
+                <Text style={styles.cancelText}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={submitRequest}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.secondary, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "800", color: COLORS.white }}>Soumettre</Text>
+              <TouchableOpacity onPress={submitLoanRequest} style={styles.confirmBtn}>
+                <Text style={styles.confirmText}>Soumettre</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-      
-      <View style={{ height: 100 }} />
+      <View style={{ height: 80 }} />
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: SPACING.lg,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.lightGray,
-    flexDirection: "row",
-    alignItems: "center",
   },
-  backButton: {
-    marginRight: SPACING.md,
-  },
-  backText: {
-    color: COLORS.primary,
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: COLORS.primary,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    padding: SPACING.lg,
-    gap: 12,
-  },
+  backButton: { marginRight: SPACING.md },
+  backText: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
+  title: { fontSize: 20, fontWeight: "900", color: COLORS.text },
   summaryCard: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-    padding: SPACING.md,
-    borderRadius: 20,
-    ...SHADOW.sm,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    color: COLORS.gray,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    marginBottom: 4,
-  },
-  summaryValue: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: COLORS.primary,
-  },
-  section: {
-    paddingHorizontal: SPACING.lg,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: COLORS.primary,
-    marginBottom: SPACING.md,
-  },
-  loanItem: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
+    margin: SPACING.lg,
     padding: SPACING.lg,
-    marginBottom: SPACING.md,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    ...SHADOW.md,
+  },
+  summaryLabel: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "700" },
+  summaryVal: { color: "#fff", fontSize: 26, fontWeight: "900", marginTop: 4 },
+  reqBtn: {
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.secondary,
+    paddingVertical: 11,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  reqBtnText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  section: { paddingHorizontal: SPACING.lg },
+  sectionTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text, marginBottom: SPACING.sm },
+  empty: { textAlign: "center", color: COLORS.gray, marginTop: 20 },
+  loanCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: 16,
+    marginBottom: SPACING.sm,
     ...SHADOW.sm,
   },
-  loanHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: SPACING.md,
-  },
-  loanLabel: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: COLORS.black,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  statusText: {
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  loanBody: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: SPACING.md,
-  },
-  metaLabel: {
-    fontSize: 10,
-    color: COLORS.gray,
-    fontWeight: "600",
-    marginBottom: 2,
-  },
-  metaValue: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: COLORS.black,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: COLORS.background,
-    borderRadius: 3,
-    overflow: "hidden",
-    marginBottom: SPACING.md,
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 3,
-  },
-  loanFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  nextDate: {
-    fontSize: 12,
-    color: COLORS.gray,
-    fontWeight: "600",
-  },
-  payNowBtn: {
+  loanTitle: { fontSize: 15, fontWeight: "800", color: COLORS.text },
+  loanMeta: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
+  loanRem: { fontSize: 12, fontWeight: "800", marginTop: 4 },
+  payBtn: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
   },
-  payNowText: {
-    color: COLORS.white,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  requestBtn: {
-    margin: SPACING.lg,
-    backgroundColor: COLORS.secondary,
-    borderRadius: 20,
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "center",
+  payBtnText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  modalBg: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
-    gap: 12,
-    ...SHADOW.md,
+    padding: SPACING.lg,
   },
-  requestBtnIcon: {
-    fontSize: 20,
-    color: COLORS.white,
+  modalCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 20,
+    padding: SPACING.lg,
   },
-  requestBtnText: {
-    color: COLORS.white,
-    fontWeight: "900",
-    fontSize: 15,
-    letterSpacing: 1,
+  modalTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text, marginBottom: SPACING.md },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.lightGray,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: SPACING.sm,
+    fontSize: 14,
   },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: SPACING.sm },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
+  cancelText: { color: COLORS.gray, fontWeight: "700" },
+  confirmBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  confirmText: { color: "#fff", fontWeight: "800" },
 });

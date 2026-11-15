@@ -1,85 +1,90 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
-  Modal,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { apiGet, apiPost, getSelectedAssociation } from "../../api/client";
 import { useTheme } from "../../context/ThemeContext";
 import { SHADOW, SPACING } from "../../theme";
 import { showAlert } from "../../utils/feedback";
 
-const INITIAL_EVENTS = [
-  {
-    id: "1",
-    title: "Assemblée Générale Annuelle AMSED",
-    date: "24 Mai 2026 · 14:00",
-    location: "Foyer Bandjoun, Yaoundé",
-    going: true,
-    attendees: 34,
-  },
-  {
-    id: "2",
-    title: "Gala de Solidarité AMEIBANS",
-    date: "12 Juin 2026 · 19:00",
-    location: "Hôtel Mont Fébé",
-    going: false,
-    attendees: 78,
-  },
-];
-
 export const EvenementsScreen = ({ navigation }: any) => {
   const { colors } = useTheme();
-  const [events, setEvents] = useState(INITIAL_EVENTS);
+  const [events, setEvents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
   const [location, setLocation] = useState("");
 
-  const toggleRsvp = (id: string) => {
-    setEvents((prev) =>
-      prev.map((ev) =>
-        ev.id === id
-          ? {
-              ...ev,
-              going: !ev.going,
-              attendees: ev.going ? ev.attendees - 1 : ev.attendees + 1,
-            }
-          : ev
-      )
-    );
+  const loadEvents = useCallback(async () => {
+    try {
+      const res = await apiGet<any[]>("/events");
+      setEvents(Array.isArray(res) ? res : []);
+    } catch {
+      // Keep cached
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadEvents();
+  }, [loadEvents]);
+
+  const toggleRsvp = async (id: string) => {
+    try {
+      await apiPost(`/events/${id}/rsvp`, { status: "GOING" });
+      showAlert("Participation enregistrée", "Votre réponse a été enregistrée.");
+      loadEvents();
+    } catch (err: any) {
+      showAlert("Erreur", err?.message || "Impossible de mettre à jour la participation.");
+    }
   };
 
-  const handleCreate = () => {
-    if (!title.trim()) {
-      showAlert("Champ requis", "Veuillez saisir un titre d'événement.");
+  const createEvent = async () => {
+    const assocId = await getSelectedAssociation();
+    if (!assocId || !title.trim()) {
+      showAlert("Champs requis", "Sélectionnez une association et saisissez un titre.");
       return;
     }
-    setEvents((prev) => [
-      {
-        id: String(Date.now()),
+    try {
+      await apiPost("/events", {
+        tontineId: assocId,
         title: title.trim(),
-        date: date.trim() || "À planifier",
-        location: location.trim() || "En ligne / Siège",
-        going: true,
-        attendees: 1,
-      },
-      ...prev,
-    ]);
-    setTitle("");
-    setDate("");
-    setLocation("");
-    setModalVisible(false);
-    showAlert("Événement créé", "L'événement a été ajouté au calendrier de l'association.");
+        startDate: new Date(Date.now() + 7 * 86400000).toISOString(),
+        location: location.trim() || "À définir",
+      });
+      setModalVisible(false);
+      setTitle("");
+      setLocation("");
+      loadEvents();
+    } catch (err: any) {
+      showAlert("Erreur", err?.message || "Impossible de créer l'événement.");
+    }
   };
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            loadEvents();
+          }}
+        />
+      }
     >
       <View
         style={[
@@ -90,79 +95,75 @@ export const EvenementsScreen = ({ navigation }: any) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={[styles.backText, { color: colors.primary }]}>‹ Retour</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Événements</Text>
-      </View>
-
-      <View style={styles.list}>
-        {events.map((ev) => (
-          <View key={ev.id} style={[styles.card, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.evTitle, { color: colors.text }]}>{ev.title}</Text>
-            <Text style={[styles.evMeta, { color: colors.gray }]}>📅 {ev.date}</Text>
-            <Text style={[styles.evMeta, { color: colors.gray }]}>📍 {ev.location}</Text>
-            <View style={styles.footerRow}>
-              <Text style={[styles.attendees, { color: colors.primary }]}>
-                👥 {ev.attendees} participant(s)
-              </Text>
-              <TouchableOpacity
-                onPress={() => toggleRsvp(ev.id)}
-                style={[
-                  styles.rsvpBtn,
-                  { backgroundColor: ev.going ? colors.success : colors.primary },
-                ]}
-              >
-                <Text style={styles.rsvpText}>{ev.going ? "✓ Inscrit" : "Participer"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-
+        <Text style={[styles.title, { color: colors.text, flex: 1 }]}>Événements</Text>
         <TouchableOpacity
           onPress={() => setModalVisible(true)}
-          style={[styles.addBtn, { borderColor: colors.primary }]}
+          style={[styles.addBtn, { backgroundColor: colors.primary }]}
         >
-          <Text style={[styles.addBtnText, { color: colors.primary }]}>
-            + Créer un événement
-          </Text>
+          <Text style={styles.addBtnText}>+ Créer</Text>
         </TouchableOpacity>
       </View>
 
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+      <View style={styles.list}>
+        {loading ? (
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 24 }} />
+        ) : events.length === 0 ? (
+          <Text style={[styles.empty, { color: colors.gray }]}>Aucun événement à venir.</Text>
+        ) : (
+          events.map((ev) => (
+            <View key={ev.id} style={[styles.card, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.evTitle, { color: colors.text }]}>{ev.title}</Text>
+              <Text style={[styles.evMeta, { color: colors.gray }]}>
+                {new Date(ev.startDate).toLocaleDateString("fr-FR", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                })}{" "}
+                · {ev.location || "En ligne"}
+              </Text>
+              <View style={styles.row}>
+                <Text style={[styles.attendees, { color: colors.gray }]}>
+                  👥 {ev._count?.attendees ?? ev.attendees?.length ?? 0} participant(s)
+                </Text>
+                <TouchableOpacity
+                  onPress={() => toggleRsvp(ev.id)}
+                  style={[styles.rsvpBtn, { backgroundColor: colors.secondary }]}
+                >
+                  <Text style={styles.rsvpText}>Je participe</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+      <Modal visible={modalVisible} transparent animationType="fade">
+        <View style={styles.modalBg}>
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Nouvel événement</Text>
             <TextInput
-              style={[styles.input, { borderColor: colors.lightGray, color: colors.text }]}
-              placeholder="Titre de l'événement"
-              placeholderTextColor={colors.gray}
+              style={[styles.input, { color: colors.text, borderColor: colors.lightGray }]}
               value={title}
               onChangeText={setTitle}
+              placeholder="Titre de l'événement"
+              placeholderTextColor={colors.gray}
             />
             <TextInput
-              style={[styles.input, { borderColor: colors.lightGray, color: colors.text }]}
-              placeholder="Date et heure (ex: 30 Juin 2026 · 15:00)"
-              placeholderTextColor={colors.gray}
-              value={date}
-              onChangeText={setDate}
-            />
-            <TextInput
-              style={[styles.input, { borderColor: colors.lightGray, color: colors.text }]}
-              placeholder="Lieu"
-              placeholderTextColor={colors.gray}
+              style={[styles.input, { color: colors.text, borderColor: colors.lightGray }]}
               value={location}
               onChangeText={setLocation}
+              placeholder="Lieu"
+              placeholderTextColor={colors.gray}
             />
             <View style={styles.modalActions}>
-              <TouchableOpacity
-                onPress={() => setModalVisible(false)}
-                style={[styles.modalBtn, { backgroundColor: colors.lightGray }]}
-              >
-                <Text style={{ color: colors.text, fontWeight: "700" }}>Annuler</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtn}>
+                <Text style={{ color: colors.gray, fontWeight: "700" }}>Annuler</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleCreate}
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                onPress={createEvent}
+                style={[styles.confirmBtn, { backgroundColor: colors.primary }]}
               >
-                <Text style={{ color: "#fff", fontWeight: "800" }}>Créer</Text>
+                <Text style={{ color: "#fff", fontWeight: "800" }}>Publier</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -183,43 +184,27 @@ const styles = StyleSheet.create({
   backButton: { marginRight: SPACING.md },
   backText: { fontSize: 16, fontWeight: "700" },
   title: { fontSize: 20, fontWeight: "900" },
+  addBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  addBtnText: { color: "#fff", fontWeight: "800", fontSize: 12 },
   list: { padding: SPACING.lg },
-  card: { borderRadius: 18, padding: SPACING.lg, marginBottom: SPACING.md, ...SHADOW.sm },
-  evTitle: { fontSize: 16, fontWeight: "900", marginBottom: 6 },
-  evMeta: { fontSize: 13, marginBottom: 3 },
-  footerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: SPACING.md,
-  },
-  attendees: { fontSize: 12, fontWeight: "800" },
-  rsvpBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
-  rsvpText: { color: "#fff", fontSize: 12, fontWeight: "800" },
-  addBtn: {
-    borderWidth: 2,
-    borderStyle: "dashed",
+  empty: { textAlign: "center", marginTop: 24, fontSize: 14 },
+  card: {
     borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
-    marginTop: SPACING.sm,
-  },
-  addBtnText: { fontWeight: "800", fontSize: 14 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: SPACING.lg,
-  },
-  modalCard: { borderRadius: 20, padding: SPACING.lg },
-  modalTitle: { fontSize: 18, fontWeight: "900", marginBottom: SPACING.md },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
+    padding: SPACING.md,
     marginBottom: SPACING.sm,
-    fontSize: 14,
+    ...SHADOW.sm,
   },
-  modalActions: { flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.sm },
-  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: "center" },
+  evTitle: { fontSize: 16, fontWeight: "800" },
+  evMeta: { fontSize: 12, marginTop: 4 },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 12 },
+  attendees: { fontSize: 12, fontWeight: "700" },
+  rsvpBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  rsvpText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: SPACING.lg },
+  modalCard: { borderRadius: 20, padding: SPACING.lg },
+  modalTitle: { fontSize: 16, fontWeight: "900", marginBottom: SPACING.md },
+  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, marginBottom: SPACING.sm },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: SPACING.sm },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
+  confirmBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
 });

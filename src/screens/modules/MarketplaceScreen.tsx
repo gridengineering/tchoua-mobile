@@ -1,373 +1,258 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
-  Dimensions,
+  Text,
   TextInput,
-  Modal,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { COLORS, SPACING, SHADOW } from "../../theme";
+import { apiGet, apiPost, getSelectedAssociation } from "../../api/client";
+import { COLORS, SHADOW, SPACING } from "../../theme";
 import { showAlert } from "../../utils/feedback";
-
-const { width } = Dimensions.get("window");
-
-const INITIAL_ITEMS = [
-  { id: "1", title: "Sac à main cuir", cat: "Mode", priceNum: 15000, seller: "Amina K.", time: "2h", image: "👜" },
-  { id: "2", title: "Panier Fruits Frais", cat: "Alimentation", priceNum: 5000, seller: "Bio Garden", time: "5h", image: "🍎" },
-  { id: "3", title: "iPhone 12 Pro", cat: "Électronique", priceNum: 350000, seller: "Tech Store", time: "1j", image: "📱" },
-  { id: "4", title: "Tee-shirt Coton", cat: "Mode", priceNum: 3500, seller: "Moda Fashion", time: "2j", image: "👕" },
-];
 
 export const MarketplaceScreen = ({ navigation }: any) => {
   const CATEGORIES = ["Tout", "Électronique", "Mode", "Alimentation", "Services"];
   const [selectedCat, setSelectedCat] = useState("Tout");
   const [search, setSearch] = useState("");
-  const [items, setItems] = useState(INITIAL_ITEMS);
-  const [cart, setCart] = useState<typeof INITIAL_ITEMS>([]);
-  const [cartModal, setCartModal] = useState(false);
+  const [items, setItems] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [sellModal, setSellModal] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newPrice, setNewPrice] = useState("");
 
+  const loadListings = useCallback(async () => {
+    try {
+      const assocId = await getSelectedAssociation();
+      const qs = assocId ? `?associationId=${assocId}` : "";
+      const res = await apiGet<any[]>(`/marketplace${qs}`);
+      setItems(Array.isArray(res) ? res : []);
+    } catch {
+      // Keep cached
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadListings();
+  }, [loadListings]);
+
   const filtered = items.filter((item) => {
-    const matchCat = selectedCat === "Tout" || item.cat === selectedCat;
-    const matchSearch = item.title.toLowerCase().includes(search.toLowerCase());
+    const matchCat = selectedCat === "Tout" || item.category === selectedCat;
+    const matchSearch = String(item.title || "").toLowerCase().includes(search.toLowerCase());
     return matchCat && matchSearch;
   });
 
-  const addToCart = (item: (typeof INITIAL_ITEMS)[0]) => {
-    setCart((prev) => [...prev, item]);
-    showAlert("Ajouté au panier", `"${item.title}" a été ajouté à votre panier.`);
-  };
-
-  const handleSell = () => {
+  const handleSell = async () => {
     const priceNum = Number(newPrice.replace(/\s+/g, ""));
     if (!newTitle.trim() || !priceNum || priceNum <= 0) {
       showAlert("Champs requis", "Veuillez renseigner le nom et le prix de l'article.");
       return;
     }
-    setItems((prev) => [
-      {
-        id: String(Date.now()),
+    try {
+      const assocId = await getSelectedAssociation();
+      await apiPost("/marketplace", {
         title: newTitle.trim(),
-        cat: selectedCat === "Tout" ? "Services" : selectedCat,
-        priceNum,
-        seller: "Moi",
-        time: "À l'instant",
-        image: "🏷️",
-      },
-      ...prev,
-    ]);
-    setNewTitle("");
-    setNewPrice("");
-    setSellModal(false);
-    showAlert("Annonce publiée", "Votre article est maintenant visible sur la Marketplace.");
+        price: priceNum,
+        category: selectedCat === "Tout" ? "Services" : selectedCat,
+        tontineId: assocId ?? null,
+      });
+      setNewTitle("");
+      setNewPrice("");
+      setSellModal(false);
+      showAlert("Annonce publiée", "Votre article est maintenant visible sur la Marketplace.");
+      loadListings();
+    } catch (err: any) {
+      showAlert("Erreur", err?.message || "Impossible de publier l'article.");
+    }
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            loadListings();
+          }}
+        />
+      }
+    >
       <View style={styles.header}>
-        <View style={styles.topRow}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={styles.backText}>‹</Text>
-          </TouchableOpacity>
-          <Text style={styles.title}>Marketplace</Text>
-          <TouchableOpacity style={styles.cartBtn} onPress={() => setCartModal(true)}>
-            <Text style={{ fontSize: 18 }}>🛒 {cart.length > 0 ? `(${cart.length})` : ""}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.searchBox}>
-          <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Rechercher un produit..."
-            value={search}
-            onChangeText={setSearch}
-          />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
-          {CATEGORIES.map((cat, i) => {
-            const active = selectedCat === cat;
-            return (
-              <TouchableOpacity
-                key={i}
-                onPress={() => setSelectedCat(cat)}
-                style={[styles.catBadge, active && styles.catBadgeActive]}
-              >
-                <Text style={[styles.catText, active && styles.catTextActive]}>{cat}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Text style={styles.backText}>‹ Retour</Text>
+        </TouchableOpacity>
+        <Text style={[styles.title, { flex: 1 }]}>Marketplace</Text>
+        <TouchableOpacity style={styles.sellBtn} onPress={() => setSellModal(true)}>
+          <Text style={styles.sellBtnText}>+ Vendre</Text>
+        </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.grid}>
-          {filtered.map((item) => (
-            <TouchableOpacity key={item.id} style={styles.productCard} onPress={() => addToCart(item)}>
-              <View style={styles.productImage}>
-                <Text style={{ fontSize: 64 }}>{item.image}</Text>
-              </View>
-              <View style={styles.productInfo}>
-                <Text style={styles.productTitle} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.productPrice}>{item.priceNum.toLocaleString("fr-FR")} F</Text>
-                <View style={styles.productFooter}>
-                  <Text style={styles.productSeller}>{item.seller}</Text>
-                  <Text style={styles.productTime}>{item.time}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={{ height: 120 }} />
+      <View style={styles.searchWrap}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Rechercher un produit ou service..."
+          value={search}
+          onChangeText={setSearch}
+        />
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+        {CATEGORIES.map((cat) => (
+          <TouchableOpacity
+            key={cat}
+            onPress={() => setSelectedCat(cat)}
+            style={[styles.catChip, selectedCat === cat && styles.catChipActive]}
+          >
+            <Text style={[styles.catText, selectedCat === cat && styles.catTextActive]}>
+              {cat}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      <TouchableOpacity style={styles.sellFab} onPress={() => setSellModal(true)}>
-        <Text style={styles.sellFabIcon}>📸</Text>
-        <Text style={styles.sellFabText}>VENDRE</Text>
-      </TouchableOpacity>
-
-      <Modal visible={cartModal} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
-          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
-            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.md }}>
-              Mon Panier ({cart.length})
-            </Text>
-            {cart.length === 0 ? (
-              <Text style={{ color: COLORS.gray, marginBottom: SPACING.md }}>Votre panier est vide.</Text>
-            ) : (
-              <>
-                {cart.map((c, idx) => (
-                  <View key={idx} style={{ flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 }}>
-                    <Text style={{ fontWeight: "700" }}>{c.title}</Text>
-                    <Text style={{ fontWeight: "800", color: COLORS.primary }}>{c.priceNum.toLocaleString("fr-FR")} F</Text>
-                  </View>
-                ))}
-                <Text style={{ marginTop: SPACING.sm, fontWeight: "900", fontSize: 16 }}>
-                  Total : {cart.reduce((s, c) => s + c.priceNum, 0).toLocaleString("fr-FR")} F
+      <View style={styles.list}>
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 24 }} />
+        ) : filtered.length === 0 ? (
+          <Text style={styles.empty}>Aucune annonce disponible.</Text>
+        ) : (
+          filtered.map((item) => (
+            <View key={item.id} style={styles.card}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemTitle}>{item.title}</Text>
+                <Text style={styles.itemMeta}>
+                  {item.category || "Général"} · {item.seller?.name || "Membre"}
                 </Text>
-              </>
-            )}
-            <View style={{ flexDirection: "row", gap: SPACING.sm, marginTop: SPACING.md }}>
+                <Text style={styles.itemPrice}>
+                  {Number(item.price || 0).toLocaleString("fr-FR")} FCFA
+                </Text>
+              </View>
               <TouchableOpacity
-                onPress={() => setCartModal(false)}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+                style={styles.buyBtn}
+                onPress={() =>
+                  showAlert(
+                    item.title,
+                    `Vendeur : ${item.seller?.name || "Membre"}\nPrix : ${Number(item.price || 0).toLocaleString("fr-FR")} FCFA`
+                  )
+                }
               >
-                <Text style={{ fontWeight: "700" }}>Fermer</Text>
+                <Text style={styles.buyBtnText}>Voir</Text>
               </TouchableOpacity>
-              {cart.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setCart([]);
-                    setCartModal(false);
-                    showAlert("Commande validée", "Votre commande a été transmise aux vendeurs.");
-                  }}
-                  style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
-                >
-                  <Text style={{ fontWeight: "800", color: COLORS.white }}>Commander</Text>
-                </TouchableOpacity>
-              )}
             </View>
-          </View>
-        </View>
-      </Modal>
+          ))
+        )}
+      </View>
 
       <Modal visible={sellModal} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
-          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
-            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.md }}>
-              Publier un article
-            </Text>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Publier un article</Text>
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
-              placeholder="Nom de l'article"
+              style={styles.input}
               value={newTitle}
               onChangeText={setNewTitle}
+              placeholder="Nom de l'article"
             />
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
-              placeholder="Prix (FCFA)"
+              style={styles.input}
               keyboardType="numeric"
               value={newPrice}
               onChangeText={setNewPrice}
+              placeholder="Prix (FCFA)"
             />
-            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
-              <TouchableOpacity
-                onPress={() => setSellModal(false)}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "700" }}>Annuler</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setSellModal(false)} style={styles.cancelBtn}>
+                <Text style={styles.cancelText}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSell}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.secondary, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "800", color: COLORS.white }}>Publier</Text>
+              <TouchableOpacity onPress={handleSell} style={styles.confirmBtn}>
+                <Text style={styles.confirmText}>Publier</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+      <View style={{ height: 80 }} />
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
   header: {
-    backgroundColor: COLORS.white,
-    paddingTop: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: SPACING.lg,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.lightGray,
   },
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: SPACING.lg,
-    height: 60,
-  },
-  backText: {
-    fontSize: 32,
-    color: COLORS.primary,
-    fontWeight: "300",
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: "900",
-    color: COLORS.primary,
-  },
-  cartBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.background,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  searchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.background,
-    marginHorizontal: SPACING.lg,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    height: 44,
-    marginBottom: 16,
-  },
-  searchIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
+  backButton: { marginRight: SPACING.md },
+  backText: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
+  title: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  sellBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  sellBtnText: { color: "#fff", fontWeight: "800", fontSize: 12 },
+  searchWrap: { padding: SPACING.lg, paddingBottom: SPACING.sm },
   searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.black,
-  },
-  catScroll: {
-    paddingLeft: SPACING.lg,
-    paddingBottom: 16,
-  },
-  catBadge: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.lightGray,
     borderRadius: 12,
-    backgroundColor: COLORS.background,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+  },
+  catRow: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.md },
+  catChip: {
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     marginRight: 8,
     borderWidth: 1,
     borderColor: COLORS.lightGray,
   },
-  catBadgeActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  catText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: COLORS.gray,
-  },
-  catTextActive: {
-    color: COLORS.white,
-  },
-  content: {
-    flex: 1,
-    padding: SPACING.md,
-  },
-  grid: {
+  catChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  catText: { fontSize: 12, fontWeight: "700", color: COLORS.text },
+  catTextActive: { color: "#fff" },
+  list: { paddingHorizontal: SPACING.lg },
+  empty: { textAlign: "center", color: COLORS.gray, marginTop: 24 },
+  card: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  productCard: {
-    width: (width - SPACING.md * 2 - 12) / 2,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    overflow: "hidden",
+    alignItems: "center",
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: 16,
+    marginBottom: SPACING.sm,
     ...SHADOW.sm,
   },
-  productImage: {
-    height: 140,
-    backgroundColor: COLORS.background,
-    justifyContent: "center",
-    alignItems: "center",
+  itemTitle: { fontSize: 15, fontWeight: "800", color: COLORS.text },
+  itemMeta: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
+  itemPrice: { fontSize: 14, fontWeight: "900", color: COLORS.primary, marginTop: 4 },
+  buyBtn: { backgroundColor: COLORS.secondary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 },
+  buyBtnText: { color: "#fff", fontSize: 12, fontWeight: "800" },
+  modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", padding: SPACING.lg },
+  modalCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: SPACING.lg },
+  modalTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text, marginBottom: SPACING.md },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.lightGray,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: SPACING.sm,
   },
-  productInfo: {
-    padding: 12,
-  },
-  productTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.black,
-    marginBottom: 4,
-  },
-  productPrice: {
-    fontSize: 16,
-    fontWeight: "900",
-    color: COLORS.secondary,
-    marginBottom: 8,
-  },
-  productFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  productSeller: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: COLORS.gray,
-  },
-  productTime: {
-    fontSize: 9,
-    color: COLORS.lightGray,
-  },
-  sellFab: {
-    position: "absolute",
-    bottom: 100,
-    right: 20,
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 30,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    ...SHADOW.md,
-  },
-  sellFabIcon: {
-    fontSize: 20,
-  },
-  sellFabText: {
-    color: COLORS.white,
-    fontWeight: "900",
-    fontSize: 14,
-    letterSpacing: 1,
-  },
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: SPACING.sm },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
+  cancelText: { color: COLORS.gray, fontWeight: "700" },
+  confirmBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  confirmText: { color: "#fff", fontWeight: "800" },
 });

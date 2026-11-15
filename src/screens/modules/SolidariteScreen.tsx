@@ -1,27 +1,35 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
+  Modal,
+  RefreshControl,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
-  Modal,
+  Text,
   TextInput,
-  Dimensions,
+  TouchableOpacity,
+  View,
 } from "react-native";
-import { COLORS, SPACING, SHADOW } from "../../theme";
+import { apiGet, apiPost, getSelectedAssociation } from "../../api/client";
+import { COLORS, SHADOW, SPACING } from "../../theme";
 import { showAlert } from "../../utils/feedback";
 
-const { width } = Dimensions.get("window");
+const CATEGORIES = [
+  { label: "Décès", value: "DEATH_MEMBER", icon: "🕊️" },
+  { label: "Naissance", value: "BIRTH", icon: "👶" },
+  { label: "Mariage", value: "MARRIAGE", icon: "💒" },
+  { label: "Maladie", value: "ILLNESS_MEMBER", icon: "🏥" },
+];
 
 export const SolidariteScreen = ({ navigation, route }: any) => {
+  const [assocId, setAssocId] = useState<string | null>(null);
   const [aidModal, setAidModal] = useState(false);
-  const [category, setCategory] = useState("Caisse Naissance");
+  const [category, setCategory] = useState("BIRTH");
   const [amount, setAmount] = useState("50000");
   const [reason, setReason] = useState("");
-  const [requests, setRequests] = useState([
-    { id: "1", title: "🍼 Aide Naissance - J. Kamdem", status: "Vérification", step: 2 },
-  ]);
+  const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (route?.params?.openAidModal) {
@@ -29,319 +37,214 @@ export const SolidariteScreen = ({ navigation, route }: any) => {
     }
   }, [route?.params?.openAidModal]);
 
-  const CAISSES = [
-    { label: "Caisse Décès", icon: "🕊️", balance: "250k F", help: "Demander aide" },
-    { label: "Caisse Naissance", icon: "👶", balance: "120k F", help: "Déclarer" },
-    { label: "Caisse Mariage", icon: "💒", balance: "300k F", help: "Déclarer" },
-    { label: "Caisse Santé", icon: "🏥", balance: "450k F", help: "Urgence" },
-  ];
+  const loadRequests = useCallback(async () => {
+    try {
+      const selectedId = await getSelectedAssociation();
+      if (!selectedId) {
+        setRequests([]);
+        return;
+      }
+      setAssocId(selectedId);
+      const res = await apiGet<{ requests?: any[] }>(`/associations/${selectedId}/social-aids`);
+      setRequests(res.requests ?? []);
+    } catch {
+      // Keep cached
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const submitAid = () => {
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  const submitAid = async () => {
     const amt = Number(amount.replace(/\s+/g, ""));
-    if (!amt || amt <= 0) {
-      showAlert("Montant invalide", "Veuillez saisir un montant valide.");
+    if (!assocId || !amt || amt <= 0) {
+      showAlert("Données requises", "Veuillez sélectionner une association et saisir un montant valide.");
       return;
     }
-    setRequests((prev) => [
-      {
-        id: String(Date.now()),
-        title: `🤝 ${category} (${amt.toLocaleString("fr-FR")} F)`,
-        status: "Soumis",
-        step: 1,
-      },
-      ...prev,
-    ]);
-    setReason("");
-    setAidModal(false);
-    showAlert("Demande enregistrée", `Votre demande "${category}" a été transmise au bureau.`);
+    try {
+      await apiPost(`/associations/${assocId}/social-aids`, {
+        category,
+        requestedAmount: amt,
+        justification: reason.trim() || "Demande soumise via Tchoua Mobile",
+      });
+      setReason("");
+      setAidModal(false);
+      showAlert("Demande enregistrée", "Votre demande d'aide sociale a été transmise au bureau.");
+      loadRequests();
+    } catch (err: any) {
+      showAlert("Erreur", err?.message || "Impossible de soumettre la demande.");
+    }
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            loadRequests();
+          }}
+        />
+      }
+    >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backText}>‹ Retour</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Solidarité</Text>
-      </View>
-
-      <View style={styles.hero}>
-        <Text style={styles.heroTitle}>La force du collectif</Text>
-        <Text style={styles.heroDesc}>Découvrez et gérez les aides communautaires disponibles dans vos associations.</Text>
+        <Text style={styles.title}>Fonds de Solidarité</Text>
       </View>
 
       <View style={styles.grid}>
-        {CAISSES.map((caisse, i) => (
+        {CATEGORIES.map((c) => (
           <TouchableOpacity
-            key={i}
+            key={c.value}
             style={styles.caisseCard}
             onPress={() => {
-              setCategory(caisse.label);
+              setCategory(c.value);
               setAidModal(true);
             }}
           >
-            <View style={styles.caisseIcon}>
-              <Text style={{ fontSize: 32 }}>{caisse.icon}</Text>
-            </View>
-            <Text style={styles.caisseLabel}>{caisse.label}</Text>
-            <Text style={styles.caisseBalance}>{caisse.balance}</Text>
-            <TouchableOpacity
-              style={styles.caisseAction}
-              onPress={() => {
-                setCategory(caisse.label);
-                setAidModal(true);
-              }}
-            >
-              <Text style={styles.caisseActionText}>{caisse.help}</Text>
-            </TouchableOpacity>
+            <Text style={{ fontSize: 28 }}>{c.icon}</Text>
+            <Text style={styles.caisseTitle}>{c.label}</Text>
+            <Text style={styles.caisseSub}>Demander une aide ›</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Demandes en cours</Text>
-        {requests.map((r) => (
-          <View key={r.id} style={[styles.requestCard, { marginBottom: SPACING.sm }]}>
-            <View style={styles.requestHeader}>
-              <Text style={styles.requestType}>{r.title}</Text>
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>{r.status}</Text>
+        <Text style={styles.sectionTitle}>Demandes ({requests.length})</Text>
+        {loading ? (
+          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
+        ) : requests.length === 0 ? (
+          <Text style={styles.empty}>Aucune demande d'aide enregistrée.</Text>
+        ) : (
+          requests.map((r) => (
+            <View key={r.id} style={styles.reqCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reqTitle}>
+                  🤝 {r.category} · {Number(r.requestedAmount || 0).toLocaleString("fr-FR")} F
+                </Text>
+                <Text style={styles.reqMeta}>
+                  {r.membership?.user?.name || "Membre"} · {r.justification || "Sans motif"}
+                </Text>
+              </View>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{r.status}</Text>
               </View>
             </View>
-            <View style={styles.timeline}>
-              <View style={[styles.timelineDot, r.step >= 1 && styles.dotActive]} />
-              <View style={[styles.timelineLine, r.step >= 2 && styles.lineActive]} />
-              <View style={[styles.timelineDot, r.step >= 2 && styles.dotActive]} />
-              <View style={[styles.timelineLine, r.step >= 3 && styles.lineActive]} />
-              <View style={[styles.timelineDot, r.step >= 3 && styles.dotActive]} />
-            </View>
-            <View style={styles.timelineLabels}>
-              <Text style={r.step >= 1 ? styles.labelActive : undefined}>Soumis</Text>
-              <Text style={r.step >= 2 ? styles.labelActive : undefined}>Validé</Text>
-              <Text style={r.step >= 3 ? styles.labelActive : undefined}>Payé</Text>
-            </View>
-          </View>
-        ))}
+          ))
+        )}
       </View>
 
-      <TouchableOpacity style={styles.mainAction} onPress={() => setAidModal(true)}>
-        <Text style={styles.mainActionText}>+ CRÉER UNE NOUVELLE DEMANDE</Text>
-      </TouchableOpacity>
-
       <Modal visible={aidModal} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
-          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
-            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.sm }}>
-              Demander une aide solidaire
-            </Text>
-            <Text style={{ fontSize: 13, color: COLORS.gray, marginBottom: SPACING.md }}>
-              Catégorie : {category}
-            </Text>
+        <View style={styles.modalBg}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Nouvelle demande d'aide ({category})</Text>
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
-              placeholder="Montant souhaité (FCFA)"
+              style={styles.input}
               keyboardType="numeric"
               value={amount}
               onChangeText={setAmount}
+              placeholder="Montant demandé (FCFA)"
             />
             <TextInput
-              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
-              placeholder="Motif / justificatif"
+              style={styles.input}
               value={reason}
               onChangeText={setReason}
+              placeholder="Justification / Détails"
             />
-            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
-              <TouchableOpacity
-                onPress={() => setAidModal(false)}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setAidModal(false)} style={styles.cancelBtn}>
+                <Text style={styles.cancelText}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={submitAid}
-                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
-              >
-                <Text style={{ fontWeight: "800", color: COLORS.white }}>Envoyer</Text>
+              <TouchableOpacity onPress={submitAid} style={styles.confirmBtn}>
+                <Text style={styles.confirmText}>Envoyer</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-      
-      <View style={{ height: 100 }} />
+      <View style={{ height: 80 }} />
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
     padding: SPACING.lg,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.lightGray,
-    flexDirection: "row",
-    alignItems: "center",
   },
-  backButton: {
-    marginRight: SPACING.md,
-  },
-  backText: {
-    color: COLORS.primary,
-    fontWeight: "700",
-    fontSize: 16,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: COLORS.primary,
-  },
-  hero: {
-    padding: SPACING.xl,
-    backgroundColor: COLORS.primary,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-  },
-  heroTitle: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: COLORS.white,
-    marginBottom: 8,
-  },
-  heroDesc: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.7)",
-    lineHeight: 20,
-  },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: SPACING.md,
-    gap: 12,
-    marginTop: -20,
-  },
+  backButton: { marginRight: SPACING.md },
+  backText: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
+  title: { fontSize: 20, fontWeight: "900", color: COLORS.text },
+  grid: { flexDirection: "row", flexWrap: "wrap", padding: SPACING.lg, gap: SPACING.sm },
   caisseCard: {
-    width: (width - SPACING.md * 2 - 12) / 2,
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    padding: SPACING.lg,
-    alignItems: "center",
+    width: "48%",
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: SPACING.md,
     ...SHADOW.sm,
   },
-  caisseIcon: {
-    marginBottom: SPACING.md,
-  },
-  caisseLabel: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.black,
-    marginBottom: 4,
-  },
-  caisseBalance: {
-    fontSize: 12,
-    color: COLORS.gray,
-    fontWeight: "600",
-    marginBottom: SPACING.md,
-  },
-  caisseAction: {
-    backgroundColor: COLORS.background,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-  },
-  caisseActionText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: COLORS.primary,
-  },
-  section: {
-    padding: SPACING.lg,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: COLORS.primary,
-    marginBottom: SPACING.md,
-  },
-  requestCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: 24,
-    padding: SPACING.lg,
-    ...SHADOW.sm,
-  },
-  requestHeader: {
+  caisseTitle: { fontSize: 15, fontWeight: "800", color: COLORS.text, marginTop: 6 },
+  caisseSub: { fontSize: 12, color: COLORS.primary, fontWeight: "700", marginTop: 4 },
+  section: { paddingHorizontal: SPACING.lg },
+  sectionTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text, marginBottom: SPACING.sm },
+  empty: { textAlign: "center", color: COLORS.gray, marginTop: 20 },
+  reqCard: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    borderRadius: 16,
+    marginBottom: SPACING.sm,
+    ...SHADOW.sm,
   },
-  requestType: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: COLORS.black,
-    flex: 1,
-  },
-  tag: {
-    backgroundColor: COLORS.warning + "15",
+  reqTitle: { fontSize: 14, fontWeight: "800", color: COLORS.text },
+  reqMeta: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
+  badge: {
+    backgroundColor: COLORS.secondary + "20",
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 8,
   },
-  tagText: {
-    fontSize: 10,
-    fontWeight: "900",
-    color: COLORS.warning,
-  },
-  timeline: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    marginBottom: 8,
-  },
-  timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.lightGray,
-  },
-  dotActive: {
-    backgroundColor: COLORS.success,
-  },
-  timelineLine: {
+  badgeText: { fontSize: 11, fontWeight: "800", color: COLORS.secondary },
+  modalBg: {
     flex: 1,
-    height: 2,
-    backgroundColor: COLORS.lightGray,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: SPACING.lg,
   },
-  lineActive: {
-    backgroundColor: COLORS.success,
+  modalCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: SPACING.lg },
+  modalTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text, marginBottom: SPACING.md },
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.lightGray,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: SPACING.sm,
+    fontSize: 14,
   },
-  timelineLabels: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 10,
+  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: SPACING.sm },
+  cancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
+  cancelText: { color: COLORS.gray, fontWeight: "700" },
+  confirmBtn: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
   },
-  labelActive: {
-    color: COLORS.success,
-    fontWeight: "700",
-    fontSize: 11,
-  },
-  mainAction: {
-    margin: SPACING.lg,
-    backgroundColor: COLORS.terracotta,
-    padding: 18,
-    borderRadius: 20,
-    alignItems: "center",
-    ...SHADOW.md,
-  },
-  mainActionText: {
-    color: COLORS.white,
-    fontWeight: "900",
-    fontSize: 13,
-    letterSpacing: 1,
-  },
+  confirmText: { color: "#fff", fontWeight: "800" },
 });

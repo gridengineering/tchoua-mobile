@@ -1,46 +1,62 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  View,
-  Text,
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { apiGet, apiPost } from "../../api/client";
 import { useTheme } from "../../context/ThemeContext";
 import { SHADOW, SPACING } from "../../theme";
-
-const INITIAL_TIPS = [
-  {
-    title: "Optimisez vos parts de tontine",
-    body: "Avec votre score de fiabilité de 98%, vous êtes éligible à la souscription de demi-parts supplémentaires sur la Tontine Scolaire A30.",
-  },
-  {
-    title: "Répartition d'intérêts en hausse",
-    body: "Vos prêts remboursés à temps ont généré +18 750 F de quote-part d'intérêts cette saison.",
-  },
-];
 
 export const ConseilsIAScreen = ({ navigation }: any) => {
   const { colors } = useTheme();
   const [question, setQuestion] = useState("");
+  const [tips, setTips] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
   const [answers, setAnswers] = useState<Array<{ q: string; a: string }>>([]);
 
-  const askAi = () => {
-    const q = question.trim();
-    if (!q) return;
-    const lower = q.toLowerCase();
-    let reply =
-      "Selon votre historique de cotisations (98% de ponctualité), votre capacité d'emprunt est estimée à 1 200 000 F et votre épargne projetée sur 6 mois atteint 290 000 F.";
-    if (lower.includes("part") || lower.includes("tontine")) {
-      reply =
-        "Vous pouvez souscrire en part entière ou en fraction (1/2 ou 1/4) selon la configuration du cycle de la tontine.";
-    } else if (lower.includes("intérêt") || lower.includes("interet") || lower.includes("dividende")) {
-      reply =
-        "Les intérêts des remboursements de prêts sont répartis au prorata de votre capital détenu dans la caisse à la date du décaissement.";
+  const loadAdvice = useCallback(async () => {
+    try {
+      const res = await apiGet<{ advice?: string[] }>("/ai/advice");
+      setTips(Array.isArray(res.advice) ? res.advice : []);
+    } catch {
+      // Keep cached/empty
+    } finally {
+      setLoading(false);
     }
-    setAnswers((prev) => [{ q, a: reply }, ...prev]);
-    setQuestion("");
+  }, []);
+
+  useEffect(() => {
+    loadAdvice();
+  }, [loadAdvice]);
+
+  const askAi = async () => {
+    const q = question.trim();
+    if (!q || sending) return;
+    setSending(true);
+    try {
+      const res = await apiPost<{ reply?: string; answer?: string; advice?: string[] }>("/ai/advice", {
+        question: q,
+      });
+      const reply =
+        res.reply ||
+        res.answer ||
+        (Array.isArray(res.advice) ? res.advice.join("\n") : "Conseil généré.");
+      setAnswers((prev) => [{ q, a: reply }, ...prev]);
+      setQuestion("");
+    } catch (err: any) {
+      setAnswers((prev) => [
+        { q, a: err?.message || "Impossible de joindre l'assistant IA hors ligne." },
+        ...prev,
+      ]);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -57,17 +73,15 @@ export const ConseilsIAScreen = ({ navigation }: any) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={[styles.backText, { color: colors.primary }]}>‹ Retour</Text>
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.text }]}>Conseils IA</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Conseils IA Tchoua</Text>
       </View>
 
       <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Poser une question</Text>
         <View style={[styles.askBox, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.askLabel, { color: colors.text }]}>
-            Poser une question financière
-          </Text>
           <TextInput
-            style={[styles.input, { borderColor: colors.lightGray, color: colors.text }]}
-            placeholder="Ex: Quelle est ma capacité d'emprunt ou ma part d'intérêts ?"
+            style={[styles.input, { color: colors.text }]}
+            placeholder="Ex: Quelle est ma capacité d'emprunt ?"
             placeholderTextColor={colors.gray}
             value={question}
             onChangeText={setQuestion}
@@ -76,24 +90,29 @@ export const ConseilsIAScreen = ({ navigation }: any) => {
             onPress={askAi}
             style={[styles.askBtn, { backgroundColor: colors.primary }]}
           >
-            <Text style={styles.askBtnText}>ANALYSER</Text>
+            <Text style={styles.askBtnText}>{sending ? "..." : "Analyser"}</Text>
           </TouchableOpacity>
         </View>
 
         {answers.map((item, idx) => (
-          <View key={idx} style={[styles.card, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.qText, { color: colors.secondary }]}>Q : {item.q}</Text>
-            <Text style={[styles.body, { color: colors.text }]}>{item.a}</Text>
+          <View key={idx} style={[styles.tipCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.tipTitle, { color: colors.primary }]}>Q: {item.q}</Text>
+            <Text style={[styles.tipBody, { color: colors.text }]}>{item.a}</Text>
           </View>
         ))}
 
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Recommandations</Text>
-        {INITIAL_TIPS.map((tip, idx) => (
-          <View key={idx} style={[styles.card, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.cardTitle, { color: colors.primary }]}>🤖 {tip.title}</Text>
-            <Text style={[styles.body, { color: colors.gray }]}>{tip.body}</Text>
-          </View>
-        ))}
+        <Text style={[styles.sectionTitle, { color: colors.text, marginTop: SPACING.md }]}>
+          Recommandations automatiques
+        </Text>
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 12 }} />
+        ) : (
+          tips.map((tip, idx) => (
+            <View key={idx} style={[styles.tipCard, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.tipBody, { color: colors.text }]}>{tip}</Text>
+            </View>
+          ))
+        )}
       </View>
     </ScrollView>
   );
@@ -111,20 +130,24 @@ const styles = StyleSheet.create({
   backText: { fontSize: 16, fontWeight: "700" },
   title: { fontSize: 20, fontWeight: "900" },
   section: { padding: SPACING.lg },
-  askBox: { borderRadius: 18, padding: SPACING.md, marginBottom: SPACING.lg, ...SHADOW.sm },
-  askLabel: { fontSize: 14, fontWeight: "800", marginBottom: SPACING.sm },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 13,
-    marginBottom: SPACING.sm,
+  sectionTitle: { fontSize: 15, fontWeight: "900", marginBottom: SPACING.sm },
+  askBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    padding: 8,
+    marginBottom: SPACING.md,
+    ...SHADOW.sm,
   },
-  askBtn: { paddingVertical: 12, borderRadius: 12, alignItems: "center" },
-  askBtnText: { color: "#fff", fontWeight: "900", fontSize: 12, letterSpacing: 1 },
-  sectionTitle: { fontSize: 16, fontWeight: "900", marginBottom: SPACING.sm },
-  card: { borderRadius: 16, padding: SPACING.md, marginBottom: SPACING.sm, ...SHADOW.sm },
-  cardTitle: { fontSize: 14, fontWeight: "900", marginBottom: 4 },
-  qText: { fontSize: 13, fontWeight: "800", marginBottom: 4 },
-  body: { fontSize: 13, lineHeight: 19 },
+  input: { flex: 1, fontSize: 14, paddingHorizontal: 10 },
+  askBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  askBtnText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  tipCard: {
+    borderRadius: 16,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    ...SHADOW.sm,
+  },
+  tipTitle: { fontSize: 14, fontWeight: "800", marginBottom: 4 },
+  tipBody: { fontSize: 13, lineHeight: 19 },
 });

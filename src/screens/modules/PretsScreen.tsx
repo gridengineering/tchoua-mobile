@@ -23,6 +23,9 @@ type LoanView = {
   remainingNum: number;
   nextDate: string;
   status: string;
+  rawStatus: string;
+  approvalsCount: number;
+  requiredApprovals: number;
   color: string;
 };
 
@@ -81,6 +84,9 @@ export const PretsScreen = ({ navigation, route }: any) => {
               ? new Date(loan.dueDate).toLocaleDateString("fr-FR")
               : "Non échéancé",
             status: STATUS_LABELS[loan.status] ?? loan.status,
+            rawStatus: loan.status,
+            approvalsCount: Array.isArray(loan.approvals) ? loan.approvals.length : 0,
+            requiredApprovals: Number(loan.amount || 0) > 500_000 ? 2 : 1,
             color:
               loan.status === "REPAID"
                 ? COLORS.success
@@ -105,6 +111,23 @@ export const PretsScreen = ({ navigation, route }: any) => {
       setReqModal(true);
     }
   }, [load, route?.params?.openLoanModal]);
+
+  const approveLoan = async (loan: LoanView) => {
+    if (!associationId) return;
+    setBusy(true);
+    try {
+      await apiMutate("PATCH", `/associations/${associationId}/loans`, {
+        loanId: loan.id,
+        action: "APPROVE",
+      });
+      showAlert("Approbation enregistrée", `Décision enregistrée pour "${loan.label}".`);
+      await load();
+    } catch (err) {
+      showAlert("Approbation impossible", (err as Error).message || "Réservé au bureau (hors emprunteur).");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const totalRemaining = loans.reduce((s, l) => s + l.remainingNum, 0);
 
@@ -226,18 +249,33 @@ export const PretsScreen = ({ navigation, route }: any) => {
               </View>
 
               <View style={styles.loanFooter}>
-                <Text style={styles.nextDate}>Échéance : {loan.nextDate}</Text>
-                {loan.remainingNum > 0 && (
-                  <TouchableOpacity
-                    style={styles.payNowBtn}
-                    onPress={() => {
-                      setPayTarget(loan);
-                      setPayAmount(String(Math.min(50000, loan.remainingNum)));
-                    }}
-                  >
-                    <Text style={styles.payNowText}>PAYER</Text>
-                  </TouchableOpacity>
-                )}
+                <Text style={styles.nextDate}>
+                  {loan.rawStatus === "PENDING"
+                    ? `Approbations : ${loan.approvalsCount}/${loan.requiredApprovals}`
+                    : `Échéance : ${loan.nextDate}`}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  {loan.rawStatus === "PENDING" && (
+                    <TouchableOpacity
+                      style={[styles.payNowBtn, { backgroundColor: COLORS.secondary }]}
+                      disabled={busy}
+                      onPress={() => approveLoan(loan)}
+                    >
+                      <Text style={styles.payNowText}>APPROUVER</Text>
+                    </TouchableOpacity>
+                  )}
+                  {loan.remainingNum > 0 && loan.rawStatus !== "PENDING" && (
+                    <TouchableOpacity
+                      style={styles.payNowBtn}
+                      onPress={() => {
+                        setPayTarget(loan);
+                        setPayAmount(String(Math.min(50000, loan.remainingNum)));
+                      }}
+                    >
+                      <Text style={styles.payNowText}>PAYER</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
           );

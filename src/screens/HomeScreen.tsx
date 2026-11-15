@@ -116,7 +116,7 @@ export const HomeScreen = ({ navigation }: any) => {
       {/* Header with Association Selector */}
       <View style={[styles.header, { backgroundColor: colors.primary }]}>
         <View style={styles.topRow}>
-          <View>
+          <View style={{ flex: 1, paddingRight: 8 }}>
             <Text style={styles.welcome}>Bonjour, {user.name.split(" ")[0]} 👋</Text>
             <Text style={styles.status}>
               {selectedAssoc !== "all" && activeAssoc
@@ -124,11 +124,30 @@ export const HomeScreen = ({ navigation }: any) => {
                 : `${associations.length} association(s) · www.tchoua.com`}
             </Text>
           </View>
-          <TouchableOpacity style={styles.avatar}>
-            <Text style={[styles.avatarText, { color: colors.primary }]}>
-              {user.name.charAt(0).toUpperCase()}
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("Wallet")}
+              style={{
+                backgroundColor: "rgba(255,255,255,0.2)",
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>👛</Text>
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>
+                {walletBalance.toLocaleString("fr-FR")} FCFA
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.avatar}>
+              <Text style={[styles.avatarText, { color: colors.primary }]}>
+                {user.name.charAt(0).toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView

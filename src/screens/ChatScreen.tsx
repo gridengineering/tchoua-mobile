@@ -105,6 +105,8 @@ export const ChatScreen = () => {
   const [listFilter, setListFilter] = useState<"all" | "groups" | "members">("all");
   const [search, setSearch] = useState("");
   const [loadingList, setLoadingList] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [walletCurrency, setWalletCurrency] = useState("FCFA");
 
   // Active chat room state
   const [room, setRoom] = useState<ActiveRoom | null>(null);
@@ -128,9 +130,17 @@ export const ChatScreen = () => {
   const loadDirectory = useCallback(async () => {
     setLoadingList(true);
     try {
-      const res = await apiGet<{ associations?: AssociationSummary[] } | AssociationSummary[]>(
-        "/associations?mine=true"
-      );
+      const [res, walletRes] = await Promise.all([
+        apiGet<{ associations?: AssociationSummary[] } | AssociationSummary[]>(
+          "/associations?mine=true"
+        ),
+        apiGet<any>("/wallet").catch(() => null),
+      ]);
+      if (walletRes) {
+        const w = walletRes.wallet ?? walletRes;
+        if (w?.balance !== undefined) setWalletBalance(Number(w.balance));
+        if (w?.currency) setWalletCurrency(String(w.currency));
+      }
       const list = Array.isArray(res) ? res : res?.associations ?? [];
       setAssociations(list);
 
@@ -430,15 +440,34 @@ export const ChatScreen = () => {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.listHeader, { backgroundColor: colors.primary }]}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.listHeaderTitle}>Tchoua Discussions</Text>
             <Text style={styles.listHeaderSub}>
               chat.tchoua.com · meet.tchoua.com
             </Text>
           </View>
-          <TouchableOpacity onPress={loadDirectory} style={styles.headerActionBtn}>
-            <Text style={{ color: "#fff", fontSize: 18 }}>↻</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <TouchableOpacity
+              onPress={() => navigation.navigate("Wallet")}
+              style={{
+                backgroundColor: "rgba(255,255,255,0.2)",
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>👛</Text>
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>
+                {walletBalance !== null ? `${walletBalance.toLocaleString("fr-FR")} ${walletCurrency}` : "Wallet"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={loadDirectory} style={styles.headerActionBtn}>
+              <Text style={{ color: "#fff", fontSize: 18 }}>↻</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={[styles.searchWrap, { backgroundColor: colors.surface, borderBottomColor: colors.lightGray }]}>

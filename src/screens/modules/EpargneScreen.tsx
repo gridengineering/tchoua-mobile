@@ -1,271 +1,404 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Modal,
-  RefreshControl,
+  View,
+  Text,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
-  View,
+  Modal,
+  TextInput,
+  Dimensions,
+  ActivityIndicator,
 } from "react-native";
-import { apiGet, apiPost } from "../../api/client";
-import { COLORS, SHADOW, SPACING } from "../../theme";
+import { COLORS, SPACING, SHADOW } from "../../theme";
 import { showAlert } from "../../utils/feedback";
+import { apiGet, apiMutate } from "../../api/client";
+
+const { width } = Dimensions.get("window");
+
+type Account = { id: string; label: string; amount: number; trend: string; icon: string };
 
 export const EpargneScreen = ({ navigation }: any) => {
-  const [goals, setGoals] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedId, setSelectedId] = useState("wallet");
+  const [modalMode, setModalMode] = useState<"deposit" | "withdraw" | null>(null);
   const [amountInput, setAmountInput] = useState("");
-  const [createModal, setCreateModal] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newTarget, setNewTarget] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const loadGoals = useCallback(async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await apiGet<any[]>("/savings");
-      setGoals(Array.isArray(res) ? res : []);
-    } catch {
-      // Keep cached
+      const [walletData, savings] = await Promise.all([
+        apiGet<any>("/wallet"),
+        apiGet<any[]>("/savings"),
+      ]);
+      const wallet = walletData?.wallet;
+      const next: Account[] = wallet
+        ? [{
+            id: "wallet",
+            label: "Portefeuille Tchoua",
+            amount: Number(wallet.balance || 0),
+            trend: "Solde disponible",
+            icon: "💰",
+          }]
+        : [];
+      for (const goal of savings ?? []) {
+        next.push({
+          id: goal.id,
+          label: goal.name,
+          amount: Number(goal.currentAmount ?? goal.targetAmount ?? 0),
+          trend: goal.deadline ? `Objectif ${goal.targetAmount} F` : "Objectif d'épargne",
+          icon: goal.icon || "🏦",
+        });
+      }
+      setAccounts(next);
+      if (!next.some((account) => account.id === selectedId)) {
+        setSelectedId(next[0]?.id ?? "wallet");
+      }
+    } catch (err) {
+      setError((err as Error).message || "Impossible de charger l'épargne.");
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
-  }, []);
+  }, [selectedId]);
 
-  useEffect(() => {
-    loadGoals();
-  }, [loadGoals]);
+  useEffect(() => { void load(); }, [load]);
 
-  const totalBalance = goals.reduce((s, g) => s + Number(g.currentAmount || 0), 0);
+  const totalBalance = accounts.reduce((s, a) => s + a.amount, 0);
 
-  const handleDeposit = async () => {
+  const handleConfirm = async () => {
     const amt = Number(amountInput.replace(/\s+/g, ""));
-    if (!selectedId || !amt || amt <= 0) {
+    if (!amt || amt <= 0) {
       showAlert("Montant invalide", "Veuillez saisir un montant valide.");
       return;
     }
-    try {
-      await apiPost(`/savings/${selectedId}/contribute`, { amount: amt });
-      setSelectedId(null);
-      setAmountInput("");
-      showAlert("Épargne créditée", `${amt.toLocaleString("fr-FR")} F ajoutés à votre objectif.`);
-      loadGoals();
-    } catch (err: any) {
-      showAlert("Erreur", err?.message || "Impossible de créditer l'objectif.");
-    }
-  };
-
-  const handleCreateGoal = async () => {
-    const target = Number(newTarget.replace(/\s+/g, ""));
-    if (!newName.trim() || !target || target <= 0) {
-      showAlert("Champs requis", "Veuillez renseigner un nom et un objectif valide.");
+    const target = accounts.find((a) => a.id === selectedId);
+    if (!target) return;
+    if (modalMode === "withdraw" && amt > target.amount) {
+      showAlert("Solde insuffisant", `Le compte "${target.label}" ne dispose que de ${target.amount.toLocaleString("fr-FR")} F.`);
       return;
     }
+    if (selectedId !== "wallet") {
+      showAlert("Compte d'objectif", "Les versements sur un objectif se font depuis le portefeuille Tchoua.");
+      return;
+    }
+    setBusy(true);
     try {
-      await apiPost("/savings", { name: newName.trim(), targetAmount: target });
-      setCreateModal(false);
-      setNewName("");
-      setNewTarget("");
-      loadGoals();
-    } catch (err: any) {
-      showAlert("Erreur", err?.message || "Impossible de créer l'objectif.");
+      const response = await apiMutate<any>("POST", "/wallet/transactions", {
+        type: modalMode === "deposit" ? "DEPOSIT" : "WITHDRAWAL",
+        amount: amt,
+        provider: "MTN_MOMO",
+        description: modalMode === "deposit" ? "Alimentation épargne (mobile)" : "Retrait épargne (mobile)",
+      });
+      setAmountInput("");
+      setModalMode(null);
+      await load();
+      showAlert(
+        modalMode === "deposit" ? "Dépôt enregistré" : "Retrait enregistré",
+        response?.pending
+          ? "L'opération est en attente de confirmation du prestataire."
+          : "L'opération a été enregistrée par le serveur."
+      );
+    } catch (err) {
+      showAlert("Opération refusée", (err as Error).message || "Erreur de connexion.");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => {
-            setRefreshing(true);
-            loadGoals();
-          }}
-        />
-      }
-    >
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Text style={styles.backText}>‹ Retour</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Épargne & Projets</Text>
+        <Text style={styles.title}>Épargne & Invest.</Text>
       </View>
 
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryLabel}>Total Épargné</Text>
-        <Text style={styles.summaryVal}>{totalBalance.toLocaleString("fr-FR")} FCFA</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => setCreateModal(true)}>
-          <Text style={styles.addBtnText}>+ Nouvel objectif</Text>
+      {loading && (
+        <View style={{ padding: SPACING.lg, alignItems: "center" }}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={{ color: COLORS.gray, marginTop: 8 }}>Chargement de l'épargne…</Text>
+        </View>
+      )}
+      {error && (
+        <TouchableOpacity onPress={() => void load()} style={{ margin: SPACING.lg, padding: SPACING.md, borderRadius: 12, backgroundColor: "#fef2f2" }}>
+          <Text style={{ color: COLORS.danger, fontWeight: "700" }}>{error}</Text>
+          <Text style={{ color: COLORS.danger, marginTop: 4, fontSize: 12 }}>Touchez pour réessayer.</Text>
         </TouchableOpacity>
+      )}
+
+      <View style={styles.balanceCard}>
+        <Text style={styles.balanceLabel}>Solde Total Épargné</Text>
+        <Text style={styles.balanceValue}>{totalBalance.toLocaleString("fr-FR")} FCFA</Text>
+        <View style={styles.balanceFooter}>
+          <View style={styles.trendBadge}>
+            <Text style={styles.trendText}>▲ +8.5% ce mois</Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Mes Objectifs ({goals.length})</Text>
-        {loading ? (
-          <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 20 }} />
-        ) : goals.length === 0 ? (
-          <Text style={styles.empty}>Aucun objectif d'épargne enregistré.</Text>
-        ) : (
-          goals.map((g) => (
-            <View key={g.id} style={styles.card}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>
-                  {g.icon || "💰"} {g.name}
-                </Text>
-                <Text style={styles.cardSub}>
-                  {Number(g.currentAmount || 0).toLocaleString("fr-FR")} F /{" "}
-                  {Number(g.targetAmount || 0).toLocaleString("fr-FR")} F
-                </Text>
+        <Text style={styles.sectionTitle}>Mes Comptes (touchez pour sélectionner)</Text>
+        {accounts.map((acc) => {
+          const active = acc.id === selectedId;
+          return (
+            <TouchableOpacity
+              key={acc.id}
+              onPress={() => setSelectedId(acc.id)}
+              style={[
+                styles.accountItem,
+                active && { borderWidth: 2, borderColor: COLORS.primary },
+              ]}
+            >
+              <View style={styles.accountIcon}>
+                <Text style={{ fontSize: 24 }}>{acc.icon}</Text>
               </View>
-              <TouchableOpacity
-                style={styles.depositBtn}
-                onPress={() => setSelectedId(g.id)}
-              >
-                <Text style={styles.depositBtnText}>+ Verser</Text>
-              </TouchableOpacity>
-            </View>
-          ))
-        )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.accountLabel}>{acc.label}</Text>
+                <Text style={styles.accountTrend}>{acc.trend} d'évolution</Text>
+              </View>
+              <Text style={styles.accountBalance}>{acc.amount.toLocaleString("fr-FR")} F</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      <Modal visible={Boolean(selectedId)} transparent animationType="fade">
-        <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Verser sur l'objectif</Text>
+      <View style={styles.actionsRow}>
+        <TouchableOpacity style={styles.actionButton} onPress={() => setModalMode("deposit")}>
+          <Text style={styles.actionIcon}>➕</Text>
+          <Text style={styles.actionLabelBtn}>Verser</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setModalMode("withdraw")}
+          style={[styles.actionButton, { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.primary }]}
+        >
+          <Text style={[styles.actionIcon, { color: COLORS.primary }]}>💸</Text>
+          <Text style={[styles.actionLabelBtn, { color: COLORS.primary }]}>Retirer</Text>
+        </TouchableOpacity>
+      </View>
+
+      <Modal visible={Boolean(modalMode)} transparent animationType="fade">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: SPACING.lg }}>
+          <View style={{ backgroundColor: COLORS.white, borderRadius: 20, padding: SPACING.lg }}>
+            <Text style={{ fontSize: 18, fontWeight: "900", color: COLORS.primary, marginBottom: SPACING.sm }}>
+              {modalMode === "deposit" ? "Verser sur l'épargne" : "Retirer de l'épargne"}
+            </Text>
+            <Text style={{ fontSize: 13, color: COLORS.gray, marginBottom: SPACING.md }}>
+              Compte : {accounts.find((a) => a.id === selectedId)?.label}
+            </Text>
             <TextInput
-              style={styles.input}
+              style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.md }}
+              placeholder="Montant (FCFA)"
               keyboardType="numeric"
               value={amountInput}
               onChangeText={setAmountInput}
-              placeholder="Montant (FCFA)"
             />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setSelectedId(null)} style={styles.cancelBtn}>
-                <Text style={styles.cancelText}>Annuler</Text>
+            <View style={{ flexDirection: "row", gap: SPACING.sm }}>
+              <TouchableOpacity
+                onPress={() => setModalMode(null)}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.lightGray, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "700", color: COLORS.black }}>Annuler</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleDeposit} style={styles.confirmBtn}>
-                <Text style={styles.confirmText}>Confirmer</Text>
+              <TouchableOpacity
+                onPress={handleConfirm}
+                style={{ flex: 1, padding: 12, borderRadius: 12, backgroundColor: COLORS.primary, alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "800", color: COLORS.white }}>Confirmer</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      <Modal visible={createModal} transparent animationType="fade">
-        <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nouvel objectif d'épargne</Text>
-            <TextInput
-              style={styles.input}
-              value={newName}
-              onChangeText={setNewName}
-              placeholder="Nom du projet"
-            />
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={newTarget}
-              onChangeText={setNewTarget}
-              placeholder="Montant cible (FCFA)"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setCreateModal(false)} style={styles.cancelBtn}>
-                <Text style={styles.cancelText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleCreateGoal} style={styles.confirmBtn}>
-                <Text style={styles.confirmText}>Créer</Text>
-              </TouchableOpacity>
-            </View>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Objectifs d'Épargne</Text>
+        <View style={styles.goalCard}>
+          <View style={styles.goalHeader}>
+            <Text style={styles.goalTitle}>Achat Terrain Douala</Text>
+            <Text style={styles.goalPercent}>60%</Text>
           </View>
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: "60%" }]} />
+          </View>
+          <Text style={styles.goalMeta}>1 200 000 F / 2 000 000 F</Text>
         </View>
-      </Modal>
-      <View style={{ height: 80 }} />
+      </View>
+      
+      <View style={{ height: 100 }} />
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
     padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.lightGray,
-  },
-  backButton: { marginRight: SPACING.md },
-  backText: { fontSize: 16, fontWeight: "700", color: COLORS.primary },
-  title: { fontSize: 20, fontWeight: "900", color: COLORS.text },
-  summaryCard: {
-    margin: SPACING.lg,
-    padding: SPACING.lg,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
-    ...SHADOW.md,
-  },
-  summaryLabel: { color: "rgba(255,255,255,0.75)", fontSize: 12, fontWeight: "700" },
-  summaryVal: { color: "#fff", fontSize: 26, fontWeight: "900", marginTop: 4 },
-  addBtn: {
-    marginTop: SPACING.md,
-    backgroundColor: COLORS.secondary,
-    paddingVertical: 11,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  addBtnText: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  section: { paddingHorizontal: SPACING.lg },
-  sectionTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text, marginBottom: SPACING.sm },
-  empty: { textAlign: "center", color: COLORS.gray, marginTop: 20 },
-  card: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.surface,
+  },
+  backButton: {
+    marginRight: SPACING.md,
+  },
+  backText: {
+    color: COLORS.primary,
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: COLORS.primary,
+  },
+  balanceCard: {
+    margin: SPACING.lg,
+    backgroundColor: COLORS.primary,
+    borderRadius: 32,
+    padding: SPACING.xl,
+    alignItems: "center",
+    ...SHADOW.md,
+  },
+  balanceLabel: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  balanceValue: {
+    color: COLORS.white,
+    fontSize: 32,
+    fontWeight: "900",
+  },
+  balanceFooter: {
+    marginTop: 16,
+  },
+  trendBadge: {
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  trendText: {
+    color: COLORS.white,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  section: {
+    paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.xl,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "900",
+    color: COLORS.primary,
+    marginBottom: SPACING.md,
+  },
+  accountItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.white,
     padding: SPACING.md,
-    borderRadius: 16,
+    borderRadius: 20,
     marginBottom: SPACING.sm,
     ...SHADOW.sm,
   },
-  cardTitle: { fontSize: 15, fontWeight: "800", color: COLORS.text },
-  cardSub: { fontSize: 12, color: COLORS.gray, marginTop: 3 },
-  depositBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  depositBtnText: { color: "#fff", fontSize: 12, fontWeight: "800" },
-  modalBg: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+  accountIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: COLORS.background,
     justifyContent: "center",
-    padding: SPACING.lg,
+    alignItems: "center",
+    marginRight: SPACING.md,
   },
-  modalCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: SPACING.lg },
-  modalTitle: { fontSize: 16, fontWeight: "900", color: COLORS.text, marginBottom: SPACING.md },
-  input: {
-    borderWidth: 1,
-    borderColor: COLORS.lightGray,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: SPACING.sm,
+  accountLabel: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: COLORS.black,
+  },
+  accountTrend: {
+    fontSize: 11,
+    color: COLORS.success,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  accountBalance: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: COLORS.primary,
+  },
+  actionsRow: {
+    flexDirection: "row",
+    paddingHorizontal: SPACING.lg,
+    gap: 12,
+    marginBottom: SPACING.xl,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  actionIcon: {
+    fontSize: 18,
+    color: COLORS.white,
+  },
+  actionLabelBtn: {
+    color: COLORS.white,
+    fontWeight: "800",
     fontSize: 14,
   },
-  modalActions: { flexDirection: "row", justifyContent: "flex-end", gap: 10, marginTop: SPACING.sm },
-  cancelBtn: { paddingHorizontal: 14, paddingVertical: 10 },
-  cancelText: { color: COLORS.gray, fontWeight: "700" },
-  confirmBtn: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
+  goalCard: {
+    backgroundColor: COLORS.white,
+    padding: SPACING.lg,
+    borderRadius: 24,
+    ...SHADOW.sm,
   },
-  confirmText: { color: "#fff", fontWeight: "800" },
+  goalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  goalTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: COLORS.black,
+  },
+  goalPercent: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: COLORS.secondary,
+  },
+  progressBar: {
+    height: 10,
+    backgroundColor: COLORS.background,
+    borderRadius: 5,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: COLORS.secondary,
+    borderRadius: 5,
+  },
+  goalMeta: {
+    fontSize: 12,
+    color: COLORS.gray,
+    fontWeight: "600",
+    textAlign: "right",
+  },
 });

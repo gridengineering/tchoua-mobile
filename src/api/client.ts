@@ -1,5 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { cacheGet, cacheSet, enqueueMutation, getPendingQueue, setPendingQueue } from "./cache";
+import {
+  cacheClear,
+  cacheGet,
+  cacheSet,
+  enqueueMutation,
+  getPendingQueue,
+  setCacheScope,
+  setPendingQueue,
+} from "./cache";
 
 export const DEFAULT_BASE_URL = "https://www.tchoua.com/api";
 let BASE_URL = DEFAULT_BASE_URL;
@@ -17,6 +25,31 @@ export function setBaseUrl(url: string) {
 
 export function getBaseUrl(): string {
   return BASE_URL;
+}
+
+async function cacheScope(): Promise<{ scope: string; userId: string; server: string }> {
+  const raw = await AsyncStorage.getItem("auth_user").catch(() => null);
+  let userId = "anonymous";
+  if (raw) {
+    try {
+      const user = JSON.parse(raw);
+      userId = user?.id || user?.email || "anonymous";
+    } catch {
+      // ignore malformed cached user
+    }
+  }
+  const server = BASE_URL;
+  return { scope: `${server}|${userId}`, userId, server };
+}
+
+async function scopeKey(): Promise<string> {
+  const { scope } = await cacheScope();
+  setCacheScope(scope);
+  return scope;
+}
+
+function newIdempotencyKey(): string {
+  return `mobile-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 async function authHeader(): Promise<Record<string, string>> {
@@ -85,6 +118,7 @@ export async function apiGet<T>(
 ): Promise<T & { __cached?: boolean; __stale?: boolean }> {
   const cacheKey = opts.cacheKey ?? path;
   try {
+    await scopeKey();
     const auth = await authHeader();
     const res = await fetch(`${BASE_URL}${path}`, {
       credentials: "include",
@@ -114,12 +148,19 @@ export async function apiMutate<T>(
   path: string,
   body?: unknown
 ): Promise<T> {
+  const { scope, userId, server } = await cacheScope();
+  setCacheScope(scope);
+  const idempotencyKey = newIdempotencyKey();
   try {
     const auth = await authHeader();
     const res = await fetch(`${BASE_URL}${path}`, {
       method,
       credentials: "include",
-      headers: { "Content-Type": "application/json", ...auth },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        ...auth,
+      },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
@@ -136,7 +177,7 @@ export async function apiMutate<T>(
     return (await res.json()) as T;
   } catch (err) {
     if (err instanceof ApiError) throw err;
-    await enqueueMutation({ method, path, body });
+    await enqueueMutation({ method, path, body, scope, userId, server, idempotencyKey });
     throw new NetworkError((err as Error).message);
   }
 }
@@ -146,7 +187,9 @@ export const apiPatch = <T>(path: string, body: object) => apiMutate<T>("PATCH",
 export const apiDelete = <T>(path: string) => apiMutate<T>("DELETE", path);
 
 export async function syncPending(): Promise<{ ok: number; failed: number }> {
-  const queue = await getPendingQueue();
+  const { scope } = await cacheScope();
+  setCacheScope(scope);
+  const queue = await getPendingQueue(scope);
   if (queue.length === 0) return { ok: 0, failed: 0 };
 
   const auth = await authHeader();
@@ -158,7 +201,11 @@ export async function syncPending(): Promise<{ ok: number; failed: number }> {
       const res = await fetch(`${BASE_URL}${m.path}`, {
         method: m.method,
         credentials: "include",
-        headers: { "Content-Type": "application/json", ...auth },
+        headers: {
+          "Content-Type": "application/json",
+          ...(m.idempotencyKey ? { "Idempotency-Key": m.idempotencyKey } : {}),
+          ...auth,
+        },
         body: m.body !== undefined ? JSON.stringify(m.body) : undefined,
       });
       if (!res.ok) throw new Error(`status ${res.status}`);
@@ -168,7 +215,11 @@ export async function syncPending(): Promise<{ ok: number; failed: number }> {
     }
   }
 
-  await setPendingQueue(remaining);
+  // Avoid replaying a scoped entry under another account: replace only the
+  // entries belonging to this scope, keep all other account queues intact.
+  const all = await getPendingQueue();
+  const untouched = all.filter((entry) => (entry.scope ?? "anonymous") !== scope);
+  await setPendingQueue([...untouched, ...remaining]);
   return { ok, failed: remaining.length };
 }
 
@@ -298,6 +349,7 @@ export async function logout() {
   await AsyncStorage.removeItem("auth_token");
   await AsyncStorage.removeItem("auth_user");
   await AsyncStorage.removeItem("selected_association_id");
+  await cacheClear();
 }
 
 export async function getSelectedAssociation(): Promise<string | null> {

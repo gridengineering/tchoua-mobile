@@ -14,7 +14,9 @@ function setup(response) {
     module, exports: module.exports,
     require: name => name.includes('async-storage') ? storage : {
       cacheGet: async () => { cached++; return { data: { secret: true } }; },
-      cacheSet: async () => {}, enqueueMutation: async () => { enqueued++; },
+      cacheSet: async () => {}, cacheClear: async () => {}, setCacheScope: () => {},
+      enqueueMutation: async () => { enqueued++; },
+      getPendingQueue: async () => [], setPendingQueue: async () => {},
     },
     fetch: async () => response, console,
   });

@@ -195,6 +195,40 @@ export const HomeScreen = ({ navigation }: any) => {
         ))}
       </View>
 
+      {/* Quick Member & Discovery Actions */}
+      <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: SPACING.lg, marginBottom: SPACING.md }}>
+        <TouchableOpacity
+          onPress={() => navigation?.navigate?.("membres", { openModal: "add" })}
+          style={{
+            flex: 1,
+            backgroundColor: colors.primary,
+            borderRadius: 14,
+            paddingVertical: 12,
+            paddingHorizontal: 10,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800", textAlign: "center" }}>
+            👥 Ajouter membre (Contacts)
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => navigation?.navigate?.("membres", { openModal: "discover" })}
+          style={{
+            flex: 1,
+            backgroundColor: colors.secondary,
+            borderRadius: 14,
+            paddingVertical: 12,
+            paddingHorizontal: 10,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800", textAlign: "center" }}>
+            🎁 Inviter sur Tchoua (+Pts)
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Next Session Card */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>

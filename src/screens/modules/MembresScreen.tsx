@@ -27,7 +27,7 @@ type MemberItem = {
   phone: string;
 };
 
-export const MembresScreen = ({ navigation }: any) => {
+export const MembresScreen = ({ navigation, route }: any) => {
   const { colors } = useTheme();
   const [query, setQuery] = useState("");
   const [members, setMembers] = useState<MemberItem[]>([]);
@@ -35,8 +35,8 @@ export const MembresScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [addOpen, setAddOpen] = useState(false);
-  const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(route?.params?.openModal === "add");
+  const [discoverOpen, setDiscoverOpen] = useState(route?.params?.openModal === "discover");
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({
     lastName: "",
@@ -51,13 +51,68 @@ export const MembresScreen = ({ navigation }: any) => {
   const [phoneContacts, setPhoneContacts] = useState<Array<{ id: string; name: string; firstName: string; lastName: string; phone: string; email: string }>>([]);
   const [contactPickerMode, setContactPickerMode] = useState<"member" | "referral" | null>(null);
   const [refEmails, setRefEmails] = useState(["", "", "", "", ""]);
+  const [refInfo, setRefInfo] = useState<{
+    shareUrl?: string;
+    mobileDownloadUrl?: string;
+    whatsappUrl?: string;
+    referralCode?: string;
+    score?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (route?.params?.openModal === "add") setAddOpen(true);
+    if (route?.params?.openModal === "discover") setDiscoverOpen(true);
+  }, [route?.params?.openModal]);
+
+  useEffect(() => {
+    if (discoverOpen && !refInfo) {
+      apiGet<any>("/referrals/invite")
+        .then((d) => setRefInfo(d))
+        .catch(() => {});
+    }
+  }, [discoverOpen, refInfo]);
 
   const loadPhoneContacts = async (mode: "member" | "referral") => {
     if (Platform.OS === "web") {
-      showAlert(
-        "Contacts téléphone",
-        "Sur navigateur Web, utilisez l'import de fichier Contacts (.vcf / .csv) ou saisissez les coordonnées. Sur iOS/Android, la liste des contacts du téléphone s'ouvre directement."
-      );
+      const nav: any = typeof navigator !== "undefined" ? navigator : null;
+      if (nav?.contacts && typeof nav.contacts.select === "function") {
+        try {
+          const picked = await nav.contacts.select(["name", "tel", "email"], { multiple: false });
+          if (picked && picked.length > 0) {
+            const c = picked[0];
+            const fullName = Array.isArray(c.name) ? c.name[0] || "" : String(c.name || "");
+            const phone = Array.isArray(c.tel) ? c.tel[0] || "" : "";
+            const email = Array.isArray(c.email) ? c.email[0] || "" : "";
+            if (mode === "member") {
+              setForm((prev) => ({
+                ...prev,
+                firstName: fullName.split(" ")[0] || prev.firstName,
+                lastName: fullName.split(" ").slice(1).join(" ") || prev.lastName,
+                phone: phone || prev.phone,
+                email: email || prev.email,
+              }));
+            } else if (email) {
+              const emptyIdx = refEmails.findIndex((e) => !e.trim());
+              if (emptyIdx >= 0) {
+                const next = [...refEmails];
+                next[emptyIdx] = email;
+                setRefEmails(next);
+              }
+            }
+            return;
+          }
+        } catch {
+          // fallback below
+        }
+      }
+      if (mode === "member") {
+        handleImportContactsFile();
+      } else {
+        showAlert(
+          "Contacts Web",
+          "Sur navigateur desktop, saisissez jusqu'à 5 emails ci-dessous ou cliquez sur Partager sur WhatsApp. Sur Android/iOS (ou Chrome Android), le carnet d'adresses du téléphone s'ouvre directement."
+        );
+      }
       return;
     }
     try {
@@ -376,8 +431,24 @@ export const MembresScreen = ({ navigation }: any) => {
           <ScrollView contentContainerStyle={[styles.modalCard, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Faire découvrir Tchoua (+Points)</Text>
             <Text style={[styles.meta, { color: colors.gray, marginBottom: 10 }]}>
-              Invitez jusqu&apos;à 5 emails ou partagez via WhatsApp / Contacts téléphone pour gagner des points Gamification.
+              Invitez vos contacts à s&apos;inscrire sur le Web ou télécharger l&apos;app mobile et gagnez des points Gamification (+10 pts/email, +15 pts WhatsApp).
             </Text>
+
+            <View style={{ padding: 10, borderRadius: 12, backgroundColor: colors.background, marginBottom: 10 }}>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.text }}>
+                Lien d&apos;inscription Web :
+              </Text>
+              <Text selectable style={{ fontSize: 11, color: colors.primary, marginBottom: 6 }}>
+                {refInfo?.shareUrl || "https://www.tchoua.com/register"}
+              </Text>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.text }}>
+                Lien téléchargement App Mobile :
+              </Text>
+              <Text selectable style={{ fontSize: 11, color: colors.primary }}>
+                {refInfo?.mobileDownloadUrl || "https://www.tchoua.com/mobile"}
+              </Text>
+            </View>
+
             <TouchableOpacity
               onPress={() => loadPhoneContacts("referral")}
               style={[styles.badgeBtn, { backgroundColor: colors.primary + "18", alignItems: "center", paddingVertical: 9, marginBottom: 10 }]}

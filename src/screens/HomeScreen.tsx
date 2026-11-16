@@ -126,6 +126,21 @@ export const HomeScreen = ({ navigation }: any) => {
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <TouchableOpacity
+              onPress={() => navigation.navigate("parcours")}
+              style={{
+                backgroundColor: "rgba(255,255,255,0.2)",
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+                borderRadius: 999,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>🧭</Text>
+              <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>Parcours</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => navigation.navigate("Wallet")}
               style={{
                 backgroundColor: "rgba(255,255,255,0.2)",
@@ -193,40 +208,6 @@ export const HomeScreen = ({ navigation }: any) => {
             <Text style={[styles.kpiLabel, { color: colors.gray }]}>{kpi.label}</Text>
           </View>
         ))}
-      </View>
-
-      {/* Quick Member & Discovery Actions */}
-      <View style={{ flexDirection: "row", gap: 10, paddingHorizontal: SPACING.lg, marginBottom: SPACING.md }}>
-        <TouchableOpacity
-          onPress={() => navigation?.navigate?.("membres", { openModal: "add" })}
-          style={{
-            flex: 1,
-            backgroundColor: colors.primary,
-            borderRadius: 14,
-            paddingVertical: 12,
-            paddingHorizontal: 10,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800", textAlign: "center" }}>
-            👥 Ajouter membre (Contacts)
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => navigation?.navigate?.("membres", { openModal: "discover" })}
-          style={{
-            flex: 1,
-            backgroundColor: colors.secondary,
-            borderRadius: 14,
-            paddingVertical: 12,
-            paddingHorizontal: 10,
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800", textAlign: "center" }}>
-            🎁 Inviter sur Tchoua (+Pts)
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {/* Next Session Card */}

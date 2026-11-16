@@ -146,79 +146,79 @@ const DIMENSION_META: Array<{
   label: string;
   options: Array<{ value: string; label: string }>;
 }> = [
-  {
-    key: 'organisation',
-    label: 'Organisation',
-    options: [
-      { value: 'autonome', label: 'Autonome' },
-      { value: 'section', label: 'Section' },
-      { value: 'federation', label: 'Fédération' },
-    ],
-  },
-  {
-    key: 'adhesion',
-    label: 'Adhésion',
-    options: [
-      { value: 'individuelle', label: 'Individuelle' },
-      { value: 'familiale', label: 'Familiale' },
-      { value: 'institutionnelle', label: 'Institutionnelle' },
-    ],
-  },
-  {
-    key: 'cotisation',
-    label: 'Cotisation',
-    options: [
-      { value: 'fixe', label: 'Fixe' },
-      { value: 'parts', label: 'Parts' },
-      { value: 'nature', label: 'Nature' },
-    ],
-  },
-  {
-    key: 'tontine',
-    label: 'Tontine',
-    options: [
-      { value: 'aucune', label: 'Aucune' },
-      { value: 'rotation', label: 'Rotation' },
-      { value: 'tirage', label: 'Tirage' },
-      { value: 'encheres', label: 'Enchères' },
-    ],
-  },
-  {
-    key: 'credit',
-    label: 'Crédit',
-    options: [
-      { value: 'aucun', label: 'Aucun' },
-      { value: 'zero', label: 'Taux 0%' },
-      { value: 'amortissable', label: 'Amortissable' },
-    ],
-  },
-  {
-    key: 'aide',
-    label: 'Aide sociale',
-    options: [
-      { value: 'aucune', label: 'Aucune' },
-      { value: 'forfait', label: 'Forfait' },
-      { value: 'jours', label: 'Par jours' },
-    ],
-  },
-  {
-    key: 'canal',
-    label: 'Canal principal',
-    options: [
-      { value: 'especes', label: 'Espèces' },
-      { value: 'banque', label: 'Banque' },
-      { value: 'mobile_money', label: 'Mobile Money' },
-    ],
-  },
-  {
-    key: 'validation',
-    label: 'Validation financière',
-    options: [
-      { value: 'simple', label: 'Simple' },
-      { value: 'double', label: 'Double' },
-    ],
-  },
-];
+    {
+      key: 'organisation',
+      label: 'Organisation',
+      options: [
+        { value: 'autonome', label: 'Autonome' },
+        { value: 'section', label: 'Section' },
+        { value: 'federation', label: 'Fédération' },
+      ],
+    },
+    {
+      key: 'adhesion',
+      label: 'Adhésion',
+      options: [
+        { value: 'individuelle', label: 'Individuelle' },
+        { value: 'familiale', label: 'Familiale' },
+        { value: 'institutionnelle', label: 'Institutionnelle' },
+      ],
+    },
+    {
+      key: 'cotisation',
+      label: 'Cotisation',
+      options: [
+        { value: 'fixe', label: 'Fixe' },
+        { value: 'parts', label: 'Parts' },
+        { value: 'nature', label: 'Nature' },
+      ],
+    },
+    {
+      key: 'tontine',
+      label: 'Tontine',
+      options: [
+        { value: 'aucune', label: 'Aucune' },
+        { value: 'rotation', label: 'Rotation' },
+        { value: 'tirage', label: 'Tirage' },
+        { value: 'encheres', label: 'Enchères' },
+      ],
+    },
+    {
+      key: 'credit',
+      label: 'Crédit',
+      options: [
+        { value: 'aucun', label: 'Aucun' },
+        { value: 'zero', label: 'Taux 0%' },
+        { value: 'amortissable', label: 'Amortissable' },
+      ],
+    },
+    {
+      key: 'aide',
+      label: 'Aide sociale',
+      options: [
+        { value: 'aucune', label: 'Aucune' },
+        { value: 'forfait', label: 'Forfait' },
+        { value: 'jours', label: 'Par jours' },
+      ],
+    },
+    {
+      key: 'canal',
+      label: 'Canal principal',
+      options: [
+        { value: 'especes', label: 'Espèces' },
+        { value: 'banque', label: 'Banque' },
+        { value: 'mobile_money', label: 'Mobile Money' },
+      ],
+    },
+    {
+      key: 'validation',
+      label: 'Validation financière',
+      options: [
+        { value: 'simple', label: 'Simple' },
+        { value: 'double', label: 'Double' },
+      ],
+    },
+  ];
 
 const MODULE_LABELS: Array<{ key: ArpModuleKey; label: string; desc: string }> = [
   { key: 'tontine', label: 'Tontine', desc: 'Cycles, parts, bénéficiaires et tirages' },

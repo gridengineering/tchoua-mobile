@@ -11,6 +11,7 @@ import {
   StatusBar,
   StyleSheet,
   Image,
+  Linking,
 } from "react-native";
 import { Modal } from "react-native";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
@@ -60,11 +61,16 @@ function LoginScreen() {
     }
   };
 
-  const handleSocialLogin = (provider: string) => {
-    showAlert(
-      `Connexion ${provider}`,
-      "Veuillez vous connecter avec vos identifiants www.tchoua.com (email et mot de passe)."
-    );
+  const handleSocialLogin = async (provider: string) => {
+    const url = `https://www.tchoua.com/login?provider=${encodeURIComponent(provider.toLowerCase())}`;
+    try {
+      await Linking.openURL(url);
+    } catch {
+      showAlert(
+        `Connexion ${provider}`,
+        `Ouvrez ${url} dans votre navigateur pour vous connecter avec ${provider}.`
+      );
+    }
   };
 
   const handleResetPassword = () => {
@@ -84,10 +90,10 @@ function LoginScreen() {
       <StatusBar barStyle="light-content" />
       <View style={styles.loginHeader}>
         <View style={styles.logoBadge}>
-          <Image 
-            source={require("./assets/logo.png")} 
-            style={{ width: 60, height: 60 }} 
-            resizeMode="contain" 
+          <Image
+            source={require("./assets/logo.png")}
+            style={{ width: 60, height: 60 }}
+            resizeMode="contain"
           />
         </View>
         <Text style={styles.brandTitle}>Tchoua</Text>
@@ -137,22 +143,45 @@ function LoginScreen() {
           <View style={styles.socialLine} />
         </View>
 
-        <View style={styles.socialContainer}>
-          <TouchableOpacity 
-            style={[styles.socialButton, { backgroundColor: "#DB4437" }]}
+        <View style={[styles.socialContainer, { flexWrap: "wrap" }]}>
+          <TouchableOpacity
+            style={[styles.socialButton, { backgroundColor: "#DB4437", minWidth: "45%" }]}
             onPress={() => handleSocialLogin("Google")}
             disabled={loading}
           >
             <Text style={styles.socialButtonText}>Google</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.socialButton, { backgroundColor: "#4267B2" }]}
+          <TouchableOpacity
+            style={[styles.socialButton, { backgroundColor: "#4267B2", minWidth: "45%" }]}
             onPress={() => handleSocialLogin("Facebook")}
             disabled={loading}
           >
             <Text style={styles.socialButtonText}>Facebook</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.socialButton, { backgroundColor: "#0A66C2", minWidth: "45%" }]}
+            onPress={() => handleSocialLogin("LinkedIn")}
+            disabled={loading}
+          >
+            <Text style={styles.socialButtonText}>LinkedIn</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.socialButton, { backgroundColor: "#C13584", minWidth: "45%" }]}
+            onPress={() => handleSocialLogin("Instagram")}
+            disabled={loading}
+          >
+            <Text style={styles.socialButtonText}>Instagram</Text>
+          </TouchableOpacity>
         </View>
+
+        <TouchableOpacity
+          style={{ marginTop: 10, alignItems: "center" }}
+          onPress={() => Linking.openURL("https://www.tchoua.com/register")}
+        >
+          <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.primary }}>
+            Nouveau membre ? S&apos;inscrire sur Tchoua (SSO / Email)
+          </Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.forgotPassword} onPress={() => setResetVisible(true)}>
           <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
@@ -164,14 +193,16 @@ function LoginScreen() {
           En vous connectant, vous acceptez nos{" "}
           <Text
             style={styles.footerLink}
-            onPress={() =>
-              showAlert(
-                "Conditions d'utilisation",
-                "Tchoua est une plateforme open-source et gratuite de gestion d'associations et de tontines. Vos données restent strictement confidentielles au sein de vos associations."
-              )
-            }
+            onPress={() => Linking.openURL("https://www.tchoua.com/conditions-utilisation")}
           >
             Conditions d&apos;utilisation
+          </Text>
+          {" "}et notre{" "}
+          <Text
+            style={styles.footerLink}
+            onPress={() => Linking.openURL("https://www.tchoua.com/confidentialite")}
+          >
+            Politique de confidentialité
           </Text>
         </Text>
       </View>

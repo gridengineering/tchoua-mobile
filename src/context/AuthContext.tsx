@@ -25,7 +25,7 @@ interface AuthContextValue {
   user: AuthUser;
   lang: Lang;
   setLang: (lang: Lang) => Promise<void>;
-  login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  login: (identifier: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
 }
 
@@ -100,13 +100,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await AsyncStorage.setItem("app_lang", next).catch(() => {});
   };
 
-  const login = async (email: string, password: string) => {
-    const cleanEmail = email.trim();
-    if (!cleanEmail || !password.trim()) {
-      return { ok: false, error: "Veuillez renseigner votre email et mot de passe." };
+  const login = async (identifier: string, password: string) => {
+    const cleanIdentifier = identifier.trim();
+    if (!cleanIdentifier || !password.trim()) {
+      return { ok: false, error: "Veuillez renseigner votre email/téléphone et mot de passe." };
     }
     try {
-      const res = await apiLogin(cleanEmail, password);
+      const res = await apiLogin(cleanIdentifier, password);
       if (!res.ok || !res.user) {
         return {
           ok: false,

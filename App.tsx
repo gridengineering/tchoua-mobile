@@ -36,6 +36,8 @@ import { CalendarScreen } from "./src/screens/modules/CalendarScreen";
 import { HistoriqueScreen } from "./src/screens/modules/HistoriqueScreen";
 import { InteretsScreen } from "./src/screens/modules/InteretsScreen";
 import { CycleTontineScreen } from "./src/screens/modules/CycleTontineScreen";
+import { ConsentScreen } from "./src/screens/ConsentScreen";
+import { apiOnline } from "./src/api/client";
 
 import { ArpScreen } from "./src/screens/modules/ArpScreen";
 
@@ -43,7 +45,7 @@ const Stack = createStackNavigator();
 
 function LoginScreen() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [pwd, setPwd] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -53,7 +55,7 @@ function LoginScreen() {
   const handleLogin = async () => {
     setErrorMsg(null);
     setLoading(true);
-    const res = await login(email, pwd);
+    const res = await login(identifier, pwd);
     setLoading(false);
     if (!res.ok && res.error) {
       setErrorMsg(res.error);
@@ -106,15 +108,18 @@ function LoginScreen() {
             {errorMsg}
           </Text>
         ) : null}
-        <Text style={styles.inputLabel}>Email</Text>
+        <Text style={styles.inputLabel}>Email ou téléphone</Text>
         <TextInput
           style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          keyboardType="email-address"
+          value={identifier}
+          onChangeText={setIdentifier}
+          keyboardType="default"
           autoCapitalize="none"
-          placeholder="votre@email.com"
+          placeholder="email@exemple.cm ou 237677112255"
         />
+        <Text style={{ color: COLORS.gray, fontSize: 11, marginTop: -6, marginBottom: 10 }}>
+          Téléphone avec indicatif pays, ex. 237677112255.
+        </Text>
 
         <Text style={styles.inputLabel}>Mot de passe</Text>
         <TextInput
@@ -245,6 +250,19 @@ function LoginScreen() {
 function AppShell() {
   const { loggedIn, checking } = useAuth();
   const { colors } = useTheme();
+  const [consentOk, setConsentOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      setConsentOk(null);
+      return;
+    }
+    let active = true;
+    apiOnline<{ complete: boolean }>("/consents")
+      .then((data) => { if (active) setConsentOk(Boolean(data.complete)); })
+      .catch(() => { if (active) setConsentOk(false); });
+    return () => { active = false; };
+  }, [loggedIn]);
 
   if (checking) {
     return (
@@ -255,6 +273,19 @@ function AppShell() {
         </Text>
       </SafeAreaView>
     );
+  }
+
+  if (loggedIn && consentOk === null) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={COLORS.white} />
+        <Text style={{ color: COLORS.white, marginTop: 12, fontWeight: "700" }}>Chargement des conditions…</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (loggedIn && consentOk === false) {
+    return <ConsentScreen onAccepted={() => setConsentOk(true)} />;
   }
 
   return (

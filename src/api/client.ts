@@ -260,15 +260,16 @@ export async function fetchSession(): Promise<SessionUser | null> {
 }
 
 export async function login(
-  email: string,
-  password: string
+  identifier: string,
+  password: string,
+  countryCode = "237"
 ): Promise<{ ok: boolean; user?: SessionUser; error?: string }> {
   // 1. Try dedicated Mobile Bearer JWT endpoint (/api/auth/mobile)
   const mobileRes = await fetch(`${BASE_URL}/auth/mobile`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ email: email.trim(), password }),
+    body: JSON.stringify({ identifier: identifier.trim(), countryCode, password }),
   });
 
   if (mobileRes.status !== 404) {
@@ -276,7 +277,7 @@ export async function login(
     if (!mobileRes.ok || !data?.token || !data?.user) {
       return {
         ok: false,
-        error: data?.error ?? "Email ou mot de passe invalide sur www.tchoua.com.",
+        error: data?.error ?? "Email/téléphone ou mot de passe invalide sur www.tchoua.com.",
       };
     }
     await AsyncStorage.setItem("auth_token", data.token);
@@ -299,7 +300,8 @@ export async function login(
 
   const origin = BASE_URL.replace(/\/api$/, "");
   const formBody = new URLSearchParams({
-    email: email.trim(),
+    identifier: identifier.trim(),
+    email: identifier.trim(),
     password,
     csrfToken,
     callbackUrl: `${origin}/`,
@@ -320,7 +322,7 @@ export async function login(
   if (!user) {
     return {
       ok: false,
-      error: "Email ou mot de passe invalide sur www.tchoua.com.",
+      error: "Email/téléphone ou mot de passe invalide sur www.tchoua.com.",
     };
   }
 

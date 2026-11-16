@@ -262,7 +262,7 @@ export async function fetchSession(): Promise<SessionUser | null> {
 export async function login(
   identifier: string,
   password: string,
-  countryCode = "237"
+  countryCode = ""
 ): Promise<{ ok: boolean; user?: SessionUser; error?: string }> {
   // 1. Try dedicated Mobile Bearer JWT endpoint (/api/auth/mobile)
   const mobileRes = await fetch(`${BASE_URL}/auth/mobile`, {

@@ -118,7 +118,7 @@ function LoginScreen() {
           placeholder="email@exemple.cm ou 237677112255"
         />
         <Text style={{ color: COLORS.gray, fontSize: 11, marginTop: -6, marginBottom: 10 }}>
-          Téléphone avec indicatif pays, ex. 237677112255.
+          Téléphone avec indicatif pays, ex. 237677112255, +33612345678 ou 14155552671.
         </Text>
 
         <Text style={styles.inputLabel}>Mot de passe</Text>

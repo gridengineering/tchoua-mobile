@@ -40,6 +40,7 @@ import { apiOnline } from "./src/api/client";
 
 import { ArpScreen } from "./src/screens/modules/ArpScreen";
 import { ParcoursScreen } from "./src/screens/modules/ParcoursScreen";
+import { ComptesAssociationScreen } from "./src/screens/modules/ComptesAssociationScreen";
 
 const Stack = createStackNavigator();
 
@@ -270,6 +271,7 @@ function AppShell() {
               <Stack.Screen name="Main" component={MainTabNavigator} />
               <Stack.Screen name="arp" component={ArpScreen} />
               <Stack.Screen name="parcours" component={ParcoursScreen} />
+              <Stack.Screen name="ComptesAssociation" component={ComptesAssociationScreen} />
               <Stack.Screen name="epargne" component={EpargneScreen} />
               <Stack.Screen name="prets" component={PretsScreen} />
               <Stack.Screen name="solidarite" component={SolidariteScreen} />

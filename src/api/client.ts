@@ -75,14 +75,15 @@ export class ApiError extends Error {
 export async function apiOnline<T>(
   path: string,
   body?: unknown,
-  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  extraHeaders?: Record<string, string>
 ): Promise<T> {
   const auth = await authHeader();
   const resolvedMethod = method ?? (body === undefined ? "GET" : "POST");
   const response = await fetch(`${BASE_URL}${path}`, {
     method: resolvedMethod,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...auth },
+    headers: { "Content-Type": "application/json", ...auth, ...(extraHeaders ?? {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let data: any = {};
@@ -378,6 +379,25 @@ export function resolveWebUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const origin = BASE_URL.replace(/\/api$/, "");
   return `${origin}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+
+export async function uploadAssociationProof(
+  associationId: string,
+  file: { uri: string; name: string; type: string }
+): Promise<{ url: string; name: string; size?: number }> {
+  const auth = await authHeader();
+  const form = new FormData();
+  form.append("file", { uri: file.uri, name: file.name, type: file.type } as any);
+  const res = await fetch(`${BASE_URL}/associations/${associationId}/member-account/proofs`, {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json", ...auth },
+    body: form,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.url) throw new ApiError(res.status, data?.error ?? "Envoi de la preuve impossible");
+  return data;
 }
 
 export async function uploadChatFile(

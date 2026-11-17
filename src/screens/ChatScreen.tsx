@@ -73,6 +73,7 @@ const ASSOC_MODULES = [
   { route: "Calendar", icon: "📆", label: "Calendrier" },
   { route: "Rapports", icon: "📈", label: "Rapports" },
   { route: "Evenements", icon: "🎉", label: "Événements" },
+  { route: "ComptesAssociation", icon: "🏦", label: "Compte association" },
   { route: "Wallet", icon: "👛", label: "Portefeuille" },
   { route: "ConseilsIA", icon: "🤖", label: "Conseils IA" },
 ];
@@ -106,6 +107,7 @@ export const ChatScreen = () => {
   const [search, setSearch] = useState("");
   const [loadingList, setLoadingList] = useState(false);
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [assocAccount, setAssocAccount] = useState<{ balance: number; currency: string } | null>(null);
   const [walletCurrency, setWalletCurrency] = useState("FCFA");
 
   // Active chat room state
@@ -225,6 +227,15 @@ export const ChatScreen = () => {
     if (user?.id) return directChannelId(user.id, room.member.userId);
     return `DM_${room.member.userId}`;
   }, [room, channel, user?.id]);
+
+  useEffect(() => {
+    if (room?.kind !== "association") { setAssocAccount(null); return; }
+    apiGet<any>(`/associations/${room.assoc.id}/member-account`)
+      .then((result) => {
+        if (result?.account) setAssocAccount({ balance: Number(result.account.balance ?? 0), currency: String(result.account.currency ?? "XAF") });
+      })
+      .catch(() => setAssocAccount(null));
+  }, [room]);
 
   const loadMessages = useCallback(async () => {
     if (!activeAssociationId) return;
@@ -719,6 +730,21 @@ export const ChatScreen = () => {
         </Text>
       </View>
 
+      {room.kind === "association" && (
+        <TouchableOpacity
+          onPress={() => navigation.navigate("ComptesAssociation")}
+          style={[styles.assocBalanceBar, { backgroundColor: colors.surface, borderBottomColor: colors.lightGray }]}
+        >
+          <View>
+            <Text style={{ color: colors.gray, fontSize: 10, fontWeight: "800", letterSpacing: 0.8 }}>MON AVOIR ASSOCIATION</Text>
+            <Text style={{ color: colors.primary, fontSize: 18, fontWeight: "900" }}>
+              {assocAccount ? `${assocAccount.balance.toLocaleString("fr-FR")} ${assocAccount.currency}` : "Charger le solde…"}
+            </Text>
+          </View>
+          <Text style={{ color: colors.secondary, fontSize: 12, fontWeight: "900" }}>Verser / Relevé →</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Messages Feed */}
       <ScrollView
         ref={scrollRef}
@@ -1022,6 +1048,7 @@ const styles = StyleSheet.create({
   chatRowTitle: { fontSize: 16, fontWeight: "700", flex: 1, marginRight: 8 },
   badgeText: { fontSize: 11, fontWeight: "700" },
   chatRowSub: { fontSize: 13, marginTop: 2 },
+  assocBalanceBar: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: SPACING.md, paddingVertical: 8, borderBottomWidth: 1 },
   roomHeader: {
     paddingTop: 44,
     paddingBottom: 12,

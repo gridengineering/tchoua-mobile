@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { View, Text, TouchableOpacity } from "react-native";
-import { getSelectedAssociation, subscribeSelectedAssociation } from "../api/client";
+import { apiGet, getSelectedAssociation, subscribeSelectedAssociation } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
 import { PlusMenu } from "../components/PlusMenu";
 
@@ -17,12 +17,20 @@ const Tab = createBottomTabNavigator();
 export const MainTabNavigator = ({ navigation }: any) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedAssocId, setSelectedAssocId] = useState<string | null>(null);
+  const [assocRole, setAssocRole] = useState<string | null>(null);
   const { colors } = useTheme();
 
   useEffect(() => {
     getSelectedAssociation().then(setSelectedAssocId).catch(() => {});
     return subscribeSelectedAssociation(setSelectedAssocId);
   }, []);
+
+  useEffect(() => {
+    if (!selectedAssocId) { setAssocRole(null); return; }
+    apiGet<{ associations?: any[] }>("/associations")
+      .then((data) => setAssocRole(data.associations?.find((a) => a.id === selectedAssocId)?.myRole ?? null))
+      .catch(() => setAssocRole(null));
+  }, [selectedAssocId]);
 
   const inAssoc = Boolean(selectedAssocId);
 
@@ -134,6 +142,21 @@ export const MainTabNavigator = ({ navigation }: any) => {
                 tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>👤</Text>,
               }}
             />
+            <Tab.Screen
+              name="Plus"
+              component={View}
+              options={{
+                tabBarLabel: "Plus",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>☰</Text>,
+                tabBarButton: (props) => (
+                  <TouchableOpacity
+                    {...(props as any)}
+                    onPress={() => setMenuVisible(true)}
+                    style={[props.style, { alignItems: "center", justifyContent: "center" }]}
+                  />
+                ),
+              }}
+            />
           </>
         )}
       </Tab.Navigator>
@@ -141,6 +164,8 @@ export const MainTabNavigator = ({ navigation }: any) => {
       <PlusMenu
         visible={menuVisible}
         onClose={() => setMenuVisible(false)}
+        associationRole={assocRole}
+        inAssociation={inAssoc}
         onNavigate={(route) => {
           if (route === "versement") {
             navigation.navigate("Main", { screen: "Tontines", params: { openPayModal: Date.now() } });

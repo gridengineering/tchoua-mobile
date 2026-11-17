@@ -1,50 +1,36 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
+import { getSelectedAssociation, subscribeSelectedAssociation } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
-import { SHADOW } from "../theme";
 import { PlusMenu } from "../components/PlusMenu";
 
 import { HomeScreen } from "../screens/HomeScreen";
 import { TontinesScreen } from "../screens/TontinesScreen";
 import { ChatScreen } from "../screens/ChatScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
+import { WalletScreen } from "../screens/modules/WalletScreen";
+import { SessionsScreen } from "../screens/modules/SessionsScreen";
 
 const Tab = createBottomTabNavigator();
 
-const CustomTabBarButton = ({ onPress, color }: any) => (
-  <TouchableOpacity
-    style={{
-      top: -20,
-      justifyContent: "center",
-      alignItems: "center",
-      ...SHADOW.md,
-    }}
-    onPress={onPress}
-  >
-    <View
-      style={{
-        width: 64,
-        height: 64,
-        borderRadius: 32,
-        backgroundColor: color,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      <Text style={{ fontSize: 30, color: "#ffffff", fontWeight: "bold" }}>+</Text>
-    </View>
-  </TouchableOpacity>
-);
-
 export const MainTabNavigator = ({ navigation }: any) => {
   const [menuVisible, setMenuVisible] = useState(false);
+  const [selectedAssocId, setSelectedAssocId] = useState<string | null>(null);
   const { colors } = useTheme();
+
+  useEffect(() => {
+    getSelectedAssociation().then(setSelectedAssocId).catch(() => {});
+    return subscribeSelectedAssociation(setSelectedAssocId);
+  }, []);
+
+  const inAssoc = Boolean(selectedAssocId);
 
   return (
     <>
       <Tab.Navigator
-        initialRouteName="Chat"
+        key={inAssoc ? "assoc-tabs" : "global-tabs"}
+        initialRouteName="Accueil"
         screenOptions={{
           tabBarShowLabel: true,
           tabBarStyle: {
@@ -54,8 +40,8 @@ export const MainTabNavigator = ({ navigation }: any) => {
             right: 0,
             elevation: 0,
             backgroundColor: colors.surface,
-            height: 80,
-            paddingBottom: 20,
+            height: 76,
+            paddingBottom: 14,
             borderTopWidth: 1,
             borderTopColor: colors.lightGray,
           },
@@ -64,44 +50,92 @@ export const MainTabNavigator = ({ navigation }: any) => {
           headerShown: false,
         }}
       >
-        <Tab.Screen
-          name="Accueil"
-          component={HomeScreen}
-          options={{
-            tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>📊</Text>,
-          }}
-        />
-        <Tab.Screen
-          name="Tontines"
-          component={TontinesScreen}
-          options={{
-            tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>💰</Text>,
-          }}
-        />
-        <Tab.Screen
-          name="Actions"
-          component={View}
-          options={{
-            tabBarButton: (props) => (
-              <CustomTabBarButton {...props} color={colors.secondary} onPress={() => setMenuVisible(true)} />
-            ),
-          }}
-        />
-        <Tab.Screen
-          name="Chat"
-          component={ChatScreen}
-          options={{
-            tabBarLabel: "Discussions",
-            tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>💬</Text>,
-          }}
-        />
-        <Tab.Screen
-          name="Profil"
-          component={ProfileScreen}
-          options={{
-            tabBarIcon: ({ color }) => <Text style={{ fontSize: 24, color }}>👤</Text>,
-          }}
-        />
+        {inAssoc ? (
+          <>
+            <Tab.Screen
+              name="Accueil"
+              component={HomeScreen}
+              options={{
+                tabBarLabel: "Ma situation",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📊</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Tontines"
+              component={TontinesScreen}
+              options={{
+                tabBarLabel: "Activités",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>💰</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Sessions"
+              component={SessionsScreen}
+              options={{
+                tabBarLabel: "Réunions",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>📅</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={{
+                tabBarLabel: "Chat",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>💬</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Plus"
+              component={View}
+              options={{
+                tabBarLabel: "Plus",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>☰</Text>,
+                tabBarButton: (props) => (
+                  <TouchableOpacity
+                    {...(props as any)}
+                    onPress={() => setMenuVisible(true)}
+                    style={[props.style, { alignItems: "center", justifyContent: "center" }]}
+                  />
+                ),
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <Tab.Screen
+              name="Accueil"
+              component={HomeScreen}
+              options={{
+                tabBarLabel: "Accueil",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🏠</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Tontines"
+              component={TontinesScreen}
+              options={{
+                tabBarLabel: "Associations",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🤝</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Portefeuille"
+              component={WalletScreen}
+              options={{
+                tabBarLabel: "Portefeuille",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>👛</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Profil"
+              component={ProfileScreen}
+              options={{
+                tabBarLabel: "Profil",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>👤</Text>,
+              }}
+            />
+          </>
+        )}
       </Tab.Navigator>
 
       <PlusMenu

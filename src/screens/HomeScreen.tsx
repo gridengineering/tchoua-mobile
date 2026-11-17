@@ -35,6 +35,7 @@ export const HomeScreen = ({ navigation }: any) => {
   const [tontineCount, setTontineCount] = useState<number>(0);
   const [loansCount, setLoansCount] = useState<number>(0);
   const [walletBalance, setWalletBalance] = useState<number>(0);
+  const [avoirBalance, setAvoirBalance] = useState<number | null>(null);
   const [recentEvents, setRecentEvents] = useState<HistoryEvent[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -62,6 +63,17 @@ export const HomeScreen = ({ navigation }: any) => {
       if (walletRes.status === "fulfilled") {
         const bal = walletRes.value?.wallet?.balance ?? walletRes.value?.balance ?? 0;
         setWalletBalance(Number(bal) || 0);
+      }
+
+      if (selectedAssoc !== "all") {
+        apiGet<any>(`/associations/${selectedAssoc}/member-account`)
+          .then((acc) => {
+            const bal = acc?.account?.balance ?? acc?.balance;
+            setAvoirBalance(bal !== undefined ? Number(bal) : null);
+          })
+          .catch(() => setAvoirBalance(null));
+      } else {
+        setAvoirBalance(null);
       }
 
       const targetAssocId =
@@ -141,7 +153,7 @@ export const HomeScreen = ({ navigation }: any) => {
               <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>Parcours</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => navigation.navigate("Wallet")}
+              onPress={() => navigation.navigate(selectedAssoc !== "all" ? "comptes_association" : "Wallet")}
               style={{
                 backgroundColor: "rgba(255,255,255,0.2)",
                 paddingHorizontal: 10,
@@ -152,9 +164,11 @@ export const HomeScreen = ({ navigation }: any) => {
                 gap: 4,
               }}
             >
-              <Text style={{ fontSize: 13 }}>👛</Text>
+              <Text style={{ fontSize: 13 }}>{selectedAssoc !== "all" && avoirBalance !== null ? "🏦" : "👛"}</Text>
               <Text style={{ color: "#fff", fontSize: 12, fontWeight: "800" }}>
-                {walletBalance.toLocaleString("fr-FR")} FCFA
+                {selectedAssoc !== "all" && avoirBalance !== null
+                  ? `AVOIR ${avoirBalance.toLocaleString("fr-FR")} FCFA`
+                  : `${walletBalance.toLocaleString("fr-FR")} FCFA`}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.avatar}>

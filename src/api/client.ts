@@ -359,9 +359,25 @@ export async function getSelectedAssociation(): Promise<string | null> {
   return AsyncStorage.getItem("selected_association_id");
 }
 
+const assocListeners = new Set<(id: string | null) => void>();
+
+export function subscribeSelectedAssociation(listener: (id: string | null) => void): () => void {
+  assocListeners.add(listener);
+  return () => {
+    assocListeners.delete(listener);
+  };
+}
+
 export async function setSelectedAssociation(id: string | null): Promise<void> {
   if (id) await AsyncStorage.setItem("selected_association_id", id);
   else await AsyncStorage.removeItem("selected_association_id");
+  assocListeners.forEach((cb) => {
+    try {
+      cb(id);
+    } catch {
+      // ignore listener error
+    }
+  });
 }
 
 export const RTC_ENDPOINTS = {

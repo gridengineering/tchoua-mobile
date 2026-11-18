@@ -278,6 +278,7 @@ export const ChatScreen = () => {
         wsRef.current = ws;
 
         const fullChan = `assoc:${activeAssociationId}:${activeChannel}`;
+        const userChan = user?.id ? `user:${user.id}` : null;
 
         ws.onopen = () => {
           ws.send(JSON.stringify({ id: 1, connect: { token } }));
@@ -291,6 +292,7 @@ export const ChatScreen = () => {
               if (frame.connect) {
                 setWsConnected(true);
                 ws.send(JSON.stringify({ id: 2, subscribe: { channel: fullChan } }));
+                if (userChan) ws.send(JSON.stringify({ id: 3, subscribe: { channel: userChan } }));
               }
               const pubData = frame.push?.pub?.data;
               if (pubData?.type === "message" && pubData.message) {
@@ -298,6 +300,10 @@ export const ChatScreen = () => {
                 setMessages((prev) =>
                   prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]
                 );
+              }
+              if (pubData?.type === "notification" && pubData.notification) {
+                const notice = pubData.notification;
+                showAlert(notice.title || "Notification", notice.message || "");
               }
             }
           } catch {

@@ -21,6 +21,7 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
   const [bankId, setBankId] = useState("");
   const [proof, setProof] = useState<string | null>(null);
   const [proofName, setProofName] = useState("");
+  const [motif, setMotif] = useState("");
   const [settleActivity, setSettleActivity] = useState("");
   const [settleAmount, setSettleAmount] = useState("");
   const [message, setMessage] = useState("");
@@ -61,16 +62,17 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
     if (!associationId) return;
     const value = Number(amount);
     if (!value || value <= 0) { setMessage("Montant invalide"); return; }
+    if (!motif.trim()) { setMessage("Le libellé ou motif est obligatoire."); return; }
     setSaving(true); setMessage("");
     try {
       const action = method === "WALLET" ? "DEPOSIT_WALLET" : method === "BANK" ? "DEPOSIT_BANK" : "DEPOSIT_CASH";
       if (method === "BANK" && !proof) throw new Error("Joignez la preuve du virement.");
       const result = await apiOnline<any>(`/associations/${associationId}/member-account`, {
-        action, amount: value,
+        action, amount: value, motif: motif.trim(),
         ...(method === "BANK" ? { bankAccountId: bankId, proofUrl: proof } : {}),
       }, "POST", { "Idempotency-Key": `mobile-${Date.now()}-${Math.random().toString(36).slice(2)}` } as any);
       setMessage(result?.pending ? "Versement en attente de rapprochement." : "Versement enregistré.");
-      setAmount(""); setProof(null); setProofName("");
+      setAmount(""); setProof(null); setProofName(""); setMotif("");
       await load();
     } catch (e: any) { setMessage(e?.message ?? "Versement impossible"); } finally { setSaving(false); }
   };
@@ -101,6 +103,7 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
           ))}
         </View>
         <TextInput value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="Montant" placeholderTextColor={colors.gray} style={[styles.input, { color: colors.text, backgroundColor: colors.background }]} />
+        <TextInput value={motif} onChangeText={setMotif} placeholder="Libellé ou motif *" placeholderTextColor={colors.gray} style={[styles.input, { color: colors.text, backgroundColor: colors.background }]} />
         {method === "BANK" && <>
           <Text style={[styles.label, { color: colors.gray }]}>Compte bancaire de l’association</Text>
           {(data?.bankAccounts ?? []).map((b: any) => (
@@ -129,9 +132,10 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
             <Text style={{ color: colors.gray, fontSize: 11 }}>Solde activité : {Number(a.caisseBalance).toLocaleString("fr-FR")} {currency}</Text>
           </TouchableOpacity>
         ))}
+        <TextInput value={motif} onChangeText={setMotif} placeholder="Libellé ou motif *" placeholderTextColor={colors.gray} style={[styles.input, { color: colors.text, backgroundColor: colors.background }]} />
         <View style={{ flexDirection: "row", gap: 8 }}>
           <TextInput value={settleAmount} onChangeText={setSettleAmount} keyboardType="numeric" placeholder="Montant" placeholderTextColor={colors.gray} style={[styles.input, { flex: 1, color: colors.text, backgroundColor: colors.background }]} />
-          <TouchableOpacity onPress={async () => { if (!settleActivity || !settleAmount) return; setSaving(true); try { await apiOnline(`/associations/${associationId}/member-account`, { action: "SETTLE", amount: Number(settleAmount), activityId: settleActivity }, "POST", { "Idempotency-Key": `mobile-settle-${Date.now()}` } as any); setMessage("Engagement réglé depuis votre AVOIR."); setSettleAmount(""); await load(); } catch (e: any) { setMessage(e?.message ?? "Règlement impossible"); } finally { setSaving(false); } }} disabled={saving || !settleActivity} style={[styles.submit, { backgroundColor: colors.secondary, paddingHorizontal: 14, opacity: saving || !settleActivity ? 0.5 : 1 }]}>
+          <TouchableOpacity onPress={async () => { if (!settleActivity || !settleAmount) return; if (!motif.trim()) { setMessage("Le libellé ou motif est obligatoire."); return; } setSaving(true); try { await apiOnline(`/associations/${associationId}/member-account`, { action: "SETTLE", amount: Number(settleAmount), activityId: settleActivity, motif: motif.trim() }, "POST", { "Idempotency-Key": `mobile-settle-${Date.now()}` } as any); setMessage("Engagement réglé depuis votre AVOIR."); setSettleAmount(""); setMotif(""); await load(); } catch (e: any) { setMessage(e?.message ?? "Règlement impossible"); } finally { setSaving(false); } }} disabled={saving || !settleActivity} style={[styles.submit, { backgroundColor: colors.secondary, paddingHorizontal: 14, opacity: saving || !settleActivity ? 0.5 : 1 }]}>
             <Text style={{ color: colors.primary, fontWeight: "900", fontSize: 12 }}>Régler</Text>
           </TouchableOpacity>
         </View>

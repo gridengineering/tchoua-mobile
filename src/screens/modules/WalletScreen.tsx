@@ -94,6 +94,7 @@ export const WalletScreen = ({ navigation }: any) => {
   const [modalMode, setModalMode] = useState<"deposit" | "withdraw" | "transfer" | null>(null);
   const [amountInput, setAmountInput] = useState("");
   const [noteInput, setNoteInput] = useState("");
+  const [receiverInput, setReceiverInput] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("MTN_MOMO");
   const [otpRequired, setOtpRequired] = useState(false);
   const [otpInput, setOtpInput] = useState("");
@@ -155,6 +156,9 @@ export const WalletScreen = ({ navigation }: any) => {
     }
     setOtpRequired(false);
     setOtpInput("");
+    setAmountInput("");
+    setNoteInput("");
+    setReceiverInput("");
     setModalMode(mode);
   };
 
@@ -177,8 +181,12 @@ export const WalletScreen = ({ navigation }: any) => {
       showAlert("Solde insuffisant", "Vous n'avez pas assez de fonds sur votre compte.");
       return;
     }
-    if (modalMode === "transfer" && !noteInput.trim()) {
+    if (modalMode === "transfer" && !receiverInput.trim()) {
       showAlert("Destinataire requis", "Veuillez indiquer l'identifiant du destinataire.");
+      return;
+    }
+    if (!noteInput.trim()) {
+      showAlert("Libellé requis", "Veuillez saisir le libellé ou motif de l'opération.");
       return;
     }
 
@@ -190,10 +198,10 @@ export const WalletScreen = ({ navigation }: any) => {
       const payload: Record<string, any> = {
         type: txType,
         amount: amt,
-        description: noteInput.trim() || undefined,
+        description: noteInput.trim(),
       };
       if (txType === "TRANSFER") {
-        payload.receiverId = noteInput.trim();
+        payload.receiverId = receiverInput.trim();
       } else {
         payload.provider = selectedProvider;
       }
@@ -211,6 +219,7 @@ export const WalletScreen = ({ navigation }: any) => {
       setModalMode(null);
       setAmountInput("");
       setNoteInput("");
+      setReceiverInput("");
       setOtpRequired(false);
       setOtpInput("");
       showAlert("Succès", "Transaction enregistrée sur www.tchoua.com.");
@@ -380,9 +389,18 @@ export const WalletScreen = ({ navigation }: any) => {
               value={amountInput}
               onChangeText={setAmountInput}
             />
+            {modalMode === "transfer" && (
+              <TextInput
+                style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
+                placeholder="ID ou e-mail du destinataire *"
+                value={receiverInput}
+                onChangeText={setReceiverInput}
+                autoCapitalize="none"
+              />
+            )}
             <TextInput
               style={{ borderWidth: 1, borderColor: COLORS.lightGray, borderRadius: 12, padding: 12, marginBottom: SPACING.sm }}
-              placeholder={modalMode === "transfer" ? "ID du destinataire" : "Motif (optionnel)"}
+              placeholder="Libellé ou motif *"
               value={noteInput}
               onChangeText={setNoteInput}
             />

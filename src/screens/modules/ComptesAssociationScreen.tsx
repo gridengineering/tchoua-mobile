@@ -24,6 +24,13 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
   const [motif, setMotif] = useState("");
   const [settleActivity, setSettleActivity] = useState("");
   const [settleAmount, setSettleAmount] = useState("");
+  const [payoutTarget, setPayoutTarget] = useState("");
+  const [payoutMethod, setPayoutMethod] = useState("WALLET");
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutBankId, setPayoutBankId] = useState("");
+  const [payoutProof, setPayoutProof] = useState<string | null>(null);
+  const [payoutProofName, setPayoutProofName] = useState("");
+  const [payoutMotif, setPayoutMotif] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -36,7 +43,8 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
       const result = await apiGet<any>(`/associations/${id}/member-account`);
       setData(result);
       const bank = result.bankAccounts?.find((b: any) => b.isDefault) ?? result.bankAccounts?.[0];
-      if (bank) setBankId((old) => old || bank.id);
+      if (bank) { setBankId((old) => old || bank.id); setPayoutBankId((old) => old || bank.id); }
+      setPayoutTarget((old) => old || result.target?.id || result.members?.[0]?.id || "");
     } catch (e: any) {
       setMessage(e?.message ?? "Compte indisponible");
     } finally {
@@ -56,6 +64,41 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
       const uploaded = await uploadAssociationProof(associationId, { uri: asset.uri, name: asset.name, type: asset.mimeType || "image/jpeg" });
       setProof(uploaded.url); setProofName(asset.name);
     } catch (e: any) { setMessage(e?.message ?? "Preuve non envoyée"); } finally { setSaving(false); }
+  };
+
+  const pickPayoutProof = async () => {
+    const picked = await DocumentPicker.getDocumentAsync({ type: ["image/*", "application/pdf"], copyToCacheDirectory: true });
+    if (picked.canceled || !picked.assets?.[0]) return;
+    const asset = picked.assets[0];
+    if (!associationId) return;
+    setSaving(true); setMessage("");
+    try {
+      const uploaded = await uploadAssociationProof(associationId, { uri: asset.uri, name: asset.name, type: asset.mimeType || "image/jpeg" });
+      setPayoutProof(uploaded.url); setPayoutProofName(asset.name);
+    } catch (e: any) { setMessage(e?.message ?? "Preuve non envoyée"); } finally { setSaving(false); }
+  };
+
+  const submitPayout = async () => {
+    if (!associationId) return;
+    const value = Number(payoutAmount);
+    if (!payoutTarget) { setMessage("Sélectionnez le membre bénéficiaire."); return; }
+    if (!value || value <= 0) { setMessage("Montant invalide"); return; }
+    if (!payoutMotif.trim()) { setMessage("Le libellé ou motif est obligatoire."); return; }
+    if (payoutMethod === "BANK" && (!payoutBankId || !payoutProof)) { setMessage("Compte bancaire et preuve requis."); return; }
+    setSaving(true); setMessage("");
+    try {
+      await apiOnline(`/associations/${associationId}/member-account`, {
+        action: "WITHDRAW",
+        membershipId: payoutTarget,
+        amount: value,
+        method: payoutMethod,
+        motif: payoutMotif.trim(),
+        ...(payoutMethod === "BANK" ? { bankAccountId: payoutBankId, proofUrl: payoutProof } : {}),
+      }, "POST", { "Idempotency-Key": `mobile-payout-${Date.now()}-${Math.random().toString(36).slice(2)}` } as any);
+      setMessage("Paiement enregistré depuis l'AVOIR du membre.");
+      setPayoutAmount(""); setPayoutMotif(""); setPayoutProof(null); setPayoutProofName("");
+      await load();
+    } catch (e: any) { setMessage(e?.message ?? "Paiement impossible"); } finally { setSaving(false); }
   };
 
   const submit = async () => {
@@ -122,6 +165,41 @@ export const ComptesAssociationScreen = ({ navigation }: any) => {
         </TouchableOpacity>
         {!!message && <Text style={{ color: colors.secondary, fontSize: 12, fontWeight: "700", marginTop: 8 }}>{message}</Text>}
       </View>
+
+      {canManage && (
+        <View style={[styles.card, { backgroundColor: colors.surface }]}>
+          <Text style={[styles.cardTitle, { color: colors.text }]}>Payer un membre</Text>
+          <Text style={{ color: colors.gray, fontSize: 12, marginBottom: 8 }}>Débit de l’AVOIR du membre vers son wallet, son compte bancaire ou les espèces.</Text>
+          {(data?.members ?? []).map((m: any) => (
+            <TouchableOpacity key={m.id} onPress={() => setPayoutTarget(m.id)} style={[styles.bank, { borderColor: payoutTarget === m.id ? colors.primary : colors.lightGray }]}>
+              <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>{m.user?.name} {m.memberNumber ? `· ${m.memberNumber}` : ""}</Text>
+            </TouchableOpacity>
+          ))}
+          <View style={styles.methods}>
+            {[["WALLET", "Wallet"], ["BANK", "Banque"], ["CASH", "Espèces"]].map(([value, label]) => (
+              <TouchableOpacity key={value} onPress={() => setPayoutMethod(value)} style={[styles.method, { backgroundColor: payoutMethod === value ? colors.primary : colors.background }]}>
+                <Text style={{ color: payoutMethod === value ? "#fff" : colors.text, fontSize: 12, fontWeight: "800" }}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInput value={payoutAmount} onChangeText={setPayoutAmount} keyboardType="numeric" placeholder="Montant" placeholderTextColor={colors.gray} style={[styles.input, { color: colors.text, backgroundColor: colors.background }]} />
+          <TextInput value={payoutMotif} onChangeText={setPayoutMotif} placeholder="Libellé ou motif *" placeholderTextColor={colors.gray} style={[styles.input, { color: colors.text, backgroundColor: colors.background }]} />
+          {payoutMethod === "BANK" && <>
+            {(data?.bankAccounts ?? []).map((b: any) => (
+              <TouchableOpacity key={b.id} onPress={() => setPayoutBankId(b.id)} style={[styles.bank, { borderColor: payoutBankId === b.id ? colors.primary : colors.lightGray }]}>
+                <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>{b.label}</Text>
+                <Text style={{ color: colors.gray, fontSize: 11 }}>{b.bankName} · {b.accountNumber}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={pickPayoutProof} style={[styles.proof, { borderColor: colors.lightGray }]}>
+              <Text style={{ color: colors.text, fontSize: 12, fontWeight: "700" }}>{payoutProofName ? `📎 ${payoutProofName}` : "📎 Joindre la preuve (photo ou PDF)"}</Text>
+            </TouchableOpacity>
+          </>}
+          <TouchableOpacity onPress={submitPayout} disabled={saving} style={[styles.submit, { backgroundColor: colors.primary, opacity: saving ? 0.5 : 1 }]}>
+            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 13 }}>{saving ? "Enregistrement…" : "Payer depuis l’AVOIR"}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
         <Text style={[styles.cardTitle, { color: colors.text }]}>Régler une activité</Text>

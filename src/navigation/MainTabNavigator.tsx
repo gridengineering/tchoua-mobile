@@ -38,7 +38,7 @@ export const MainTabNavigator = ({ navigation }: any) => {
     <>
       <Tab.Navigator
         key={inAssoc ? "assoc-tabs" : "global-tabs"}
-        initialRouteName="Accueil"
+        initialRouteName="Chat"
         screenOptions={{
           tabBarShowLabel: true,
           tabBarStyle: {
@@ -124,6 +124,14 @@ export const MainTabNavigator = ({ navigation }: any) => {
               options={{
                 tabBarLabel: "Associations",
                 tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>🤝</Text>,
+              }}
+            />
+            <Tab.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={{
+                tabBarLabel: "Chat",
+                tabBarIcon: ({ color }) => <Text style={{ fontSize: 22, color }}>💬</Text>,
               }}
             />
             <Tab.Screen
